@@ -26,18 +26,39 @@ def create_workspace(*, user: User, name: str, slug: str) -> Workspace:
     return workspace
 
 
-def _locked_memberships(workspace: Workspace):
-    Workspace.objects.select_for_update().get(pk=workspace.pk)
-    return WorkspaceMembership.objects.select_for_update().filter(workspace=workspace)
+def _locked_membership_state(workspace_id: int) -> dict[int, WorkspaceMembership]:
+    """Lock a workspace and its memberships in a consistent order."""
+    Workspace.objects.select_for_update().get(pk=workspace_id)
+    memberships = (
+        WorkspaceMembership.objects.select_for_update()
+        .filter(workspace_id=workspace_id)
+        .order_by("pk")
+    )
+    return {membership.pk: membership for membership in memberships}
+
+
+def _current_membership(
+    memberships: dict[int, WorkspaceMembership], membership_id: int
+) -> WorkspaceMembership:
+    try:
+        return memberships[membership_id]
+    except KeyError as error:
+        raise ValidationError("این عضویت دیگر فعال نیست.") from error
+
+
+def _owner_count(memberships: dict[int, WorkspaceMembership]) -> int:
+    return sum(
+        membership.role == WorkspaceMembership.Role.OWNER for membership in memberships.values()
+    )
 
 
 @transaction.atomic
 def change_membership_role(
     *, actor: WorkspaceMembership, target: WorkspaceMembership, role: str
 ) -> None:
-    memberships = _locked_memberships(actor.workspace)
-    actor = memberships.get(pk=actor.pk)
-    target = memberships.get(pk=target.pk)
+    memberships = _locked_membership_state(actor.workspace_id)
+    actor = _current_membership(memberships, actor.pk)
+    target = _current_membership(memberships, target.pk)
     if actor.role != WorkspaceMembership.Role.OWNER:
         raise PermissionDenied
     if role not in WorkspaceMembership.Role.values:
@@ -45,7 +66,7 @@ def change_membership_role(
     if (
         target.role == WorkspaceMembership.Role.OWNER
         and role != WorkspaceMembership.Role.OWNER
-        and memberships.filter(role=WorkspaceMembership.Role.OWNER).count() == 1
+        and _owner_count(memberships) == 1
     ):
         raise ValidationError("آخرین مالک فضای کاری را نمی‌توان تنزل نقش داد.")
     target.role = role
@@ -54,9 +75,9 @@ def change_membership_role(
 
 @transaction.atomic
 def remove_membership(*, actor: WorkspaceMembership, target: WorkspaceMembership) -> None:
-    memberships = _locked_memberships(actor.workspace)
-    actor = memberships.get(pk=actor.pk)
-    target = memberships.get(pk=target.pk)
+    memberships = _locked_membership_state(actor.workspace_id)
+    actor = _current_membership(memberships, actor.pk)
+    target = _current_membership(memberships, target.pk)
     if actor.role not in [WorkspaceMembership.Role.OWNER, WorkspaceMembership.Role.ADMIN]:
         raise PermissionDenied
     if (
@@ -66,22 +87,16 @@ def remove_membership(*, actor: WorkspaceMembership, target: WorkspaceMembership
         raise PermissionDenied
     if actor.pk == target.pk:
         raise ValidationError("برای خروج از گزینهٔ ترک فضای کاری استفاده کنید.")
-    if (
-        target.role == WorkspaceMembership.Role.OWNER
-        and memberships.filter(role=WorkspaceMembership.Role.OWNER).count() == 1
-    ):
+    if target.role == WorkspaceMembership.Role.OWNER and _owner_count(memberships) == 1:
         raise ValidationError("آخرین مالک فضای کاری را نمی‌توان حذف کرد.")
     target.delete()
 
 
 @transaction.atomic
 def leave_workspace(*, membership: WorkspaceMembership) -> None:
-    memberships = _locked_memberships(membership.workspace)
-    membership = memberships.get(pk=membership.pk)
-    if (
-        membership.role == WorkspaceMembership.Role.OWNER
-        and memberships.filter(role=WorkspaceMembership.Role.OWNER).count() == 1
-    ):
+    memberships = _locked_membership_state(membership.workspace_id)
+    membership = _current_membership(memberships, membership.pk)
+    if membership.role == WorkspaceMembership.Role.OWNER and _owner_count(memberships) == 1:
         raise ValidationError("آخرین مالک نمی‌تواند فضای کاری را ترک کند.")
     membership.delete()
 

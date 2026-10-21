@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
@@ -26,6 +28,12 @@ from .services import (
     leave_workspace,
     remove_membership,
 )
+
+logger = logging.getLogger(__name__)
+
+
+class InvitationDeliveryError(Exception):
+    """Raised when an invitation email backend does not confirm delivery."""
 
 
 @login_required
@@ -100,27 +108,45 @@ def invite_member(request, slug):
     form = InvitationForm(request.POST or None, actor_membership=membership)
     if request.method == "POST" and form.is_valid():
         try:
-            invitation, token = create_invitation(
-                workspace=workspace,
-                actor=membership,
-                **form.cleaned_data,
-            )
+            with transaction.atomic():
+                invitation, token = create_invitation(
+                    workspace=workspace,
+                    actor=membership,
+                    **form.cleaned_data,
+                )
+                accept_url = request.build_absolute_uri(
+                    reverse("workspaces:invitation", kwargs={"token": token})
+                )
+                try:
+                    delivered = send_mail(
+                        subject=f"دعوت به فضای کاری {workspace.name}",
+                        message=(
+                            f"شما برای پیوستن به فضای کاری «{workspace.name}» دعوت "
+                            "شده‌اید.\n\n"
+                            "برای مشاهده و پذیرش دعوت از این پیوند استفاده کنید:\n"
+                            f"{accept_url}\n\n"
+                            "این پیوند محدود، یک‌بارمصرف و مخصوص همین ایمیل است."
+                        ),
+                        from_email=None,
+                        recipient_list=[invitation.email],
+                        fail_silently=False,
+                    )
+                except Exception as error:
+                    raise InvitationDeliveryError from error
+                if delivered != 1:
+                    raise InvitationDeliveryError
         except ValidationError as error:
             form.add_error("email", error)
+        except InvitationDeliveryError:
+            logger.exception(
+                "Workspace invitation email delivery failed",
+                extra={"workspace_id": workspace.pk},
+            )
+            form.add_error(
+                None,
+                "ارسال دعوت‌نامه انجام نشد. لطفاً کمی بعد دوباره تلاش کنید.",
+            )
         else:
-            accept_url = request.build_absolute_uri(
-                reverse("workspaces:invitation", kwargs={"token": token})
-            )
-            send_mail(
-                subject=f"دعوت به فضای کاری {workspace.name}",
-                message=(
-                    f"شما برای پیوستن به فضای کاری «{workspace.name}» دعوت شده‌اید.\n\n"
-                    f"برای مشاهده و پذیرش دعوت از این پیوند استفاده کنید:\n{accept_url}\n\n"
-                    "این پیوند محدود، یک‌بارمصرف و مخصوص همین ایمیل است."
-                ),
-                from_email=None,
-                recipient_list=[invitation.email],
-            )
             messages.success(request, "دعوت‌نامه با موفقیت ارسال شد.")
             return redirect("workspaces:members", slug=workspace.slug)
     return render(
