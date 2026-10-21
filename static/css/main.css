@@ -10,9 +10,63 @@ body {
     margin: 0;
 }
 
+a {
+    color: #4338ca;
+    text-underline-offset: .2em;
+}
+
+.site-header {
+    border-bottom: 1px solid #dce2ee;
+    background: rgb(255 255 255 / 92%);
+}
+
+.container-wide {
+    width: min(70rem, calc(100% - 2rem));
+    margin-inline: auto;
+}
+
+.nav {
+    display: flex;
+    min-height: 4.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.brand {
+    color: #172033;
+    font-size: 1.25rem;
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.nav-links form {
+    margin: 0;
+}
+
+.nav-links a,
+.link-button {
+    font: inherit;
+    color: #35405a;
+    text-decoration: none;
+}
+
+.link-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
 .container {
     display: grid;
-    min-height: 100vh;
+    min-height: calc(100vh - 4.5rem);
     place-items: center;
     padding: 2rem;
     box-sizing: border-box;
@@ -28,6 +82,21 @@ body {
     text-align: right;
 }
 
+.auth-card,
+.profile-card {
+    width: min(34rem, 100%);
+    padding: clamp(1.5rem, 5vw, 2.5rem);
+    border: 1px solid #dce2ee;
+    border-radius: 1.25rem;
+    background: #fff;
+    box-shadow: 0 1rem 3rem rgb(23 32 51 / 8%);
+    box-sizing: border-box;
+}
+
+.profile-card {
+    width: min(44rem, 100%);
+}
+
 .eyebrow {
     color: #4f46e5;
     font-weight: 700;
@@ -39,4 +108,199 @@ h1 {
     margin: .5rem 0 1rem;
     font-size: clamp(2rem, 6vw, 3.5rem);
     line-height: 1.05;
+}
+
+.muted,
+.help-text {
+    color: #697386;
+}
+
+.help-text {
+    margin-top: .4rem;
+    font-size: .875rem;
+    line-height: 1.7;
+}
+
+.help-text ul {
+    margin: .5rem 0 0;
+    padding-inline-start: 1.25rem;
+}
+
+.actions,
+.profile-heading {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.actions {
+    margin-top: 2rem;
+}
+
+.button {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    padding: .25rem 1.1rem;
+    border: 1px solid #4f46e5;
+    border-radius: .65rem;
+    color: #fff;
+    background: #4f46e5;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.button:hover {
+    background: #4338ca;
+}
+
+.button-secondary {
+    color: #4338ca;
+    background: #fff;
+}
+
+.button-small {
+    min-height: 2.25rem;
+    padding-inline: .8rem;
+}
+
+.button-block {
+    width: 100%;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: .45rem;
+    font-weight: 700;
+}
+
+.form-group input,
+.form-group textarea {
+    width: 100%;
+    padding: .75rem .85rem;
+    border: 1px solid #c7cfdd;
+    border-radius: .6rem;
+    background: #fff;
+    color: #172033;
+    font: inherit;
+    box-sizing: border-box;
+}
+
+.form-group input[type="file"] {
+    padding: .6rem;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    border-color: #4f46e5;
+    outline: 3px solid rgb(79 70 229 / 15%);
+}
+
+.has-error input,
+.has-error textarea {
+    border-color: #b42318;
+}
+
+.errorlist {
+    margin: .4rem 0 0;
+    padding-inline-start: 1.2rem;
+    color: #b42318;
+}
+
+.form-errors,
+.message {
+    width: min(44rem, 100%);
+    margin-bottom: 1rem;
+    padding: .8rem 1rem;
+    border-radius: .65rem;
+    box-sizing: border-box;
+}
+
+.form-errors {
+    color: #7a271a;
+    background: #fef3f2;
+}
+
+.messages {
+    width: min(44rem, 100%);
+}
+
+.message-success {
+    color: #05603a;
+    background: #ecfdf3;
+}
+
+.message-error {
+    color: #7a271a;
+    background: #fef3f2;
+}
+
+.auth-footer {
+    display: grid;
+    gap: .65rem;
+    margin: 1.5rem 0 0;
+    color: #697386;
+}
+
+.status-card {
+    text-align: center;
+}
+
+.profile-heading {
+    margin-bottom: 2rem;
+}
+
+.avatar-preview {
+    display: grid;
+    width: 5rem;
+    height: 5rem;
+    flex: 0 0 5rem;
+    overflow: hidden;
+    place-items: center;
+    border-radius: 50%;
+    color: #3730a3;
+    background: #e0e7ff;
+    font-size: 1.75rem;
+    font-weight: 800;
+}
+
+.avatar-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+@media (max-width: 38rem) {
+    .container {
+        padding: 1rem;
+    }
+
+    .nav {
+        align-items: flex-start;
+        padding-block: .85rem;
+    }
+
+    .nav-links {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .hero,
+    .auth-card,
+    .profile-card {
+        padding: 1.35rem;
+    }
+
+    .actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
 }

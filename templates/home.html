@@ -3,7 +3,15 @@
 {% block content %}
 <section class="hero">
     <p class="eyebrow">TaskFlow</p>
-    <h1>فضای کاری تیم شما آماده است.</h1>
-    <p>زیرساخت اولیهٔ برنامه با موفقیت در حال اجرا است.</p>
+    <h1>کار تیمی، روشن و منظم.</h1>
+    <p>TaskFlow فضای ساده‌ای برای هماهنگی کارهای تیم شما فراهم می‌کند.</p>
+    <div class="actions">
+        {% if user.is_authenticated %}
+            <a class="button" href="{% url 'accounts:profile' %}">مشاهدهٔ پروفایل</a>
+        {% else %}
+            <a class="button" href="{% url 'accounts:register' %}">شروع کنید</a>
+            <a class="button button-secondary" href="{% url 'accounts:login' %}">ورود</a>
+        {% endif %}
+    </div>
 </section>
 {% endblock %}

@@ -8,7 +8,7 @@ def test_home_page_uses_persian_rtl_layout(client):
 
     assert response.status_code == 200
     assert '<html lang="fa-IR" dir="rtl">' in response.content.decode()
-    assert "فضای کاری تیم شما آماده است." in response.content.decode()
+    assert "کار تیمی، روشن و منظم." in response.content.decode()
 
 
 def test_account_models_use_persian_admin_labels():

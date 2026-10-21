@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}ساخت حساب | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="auth-card">
+    <p class="eyebrow">عضویت در TaskFlow</p>
+    <h1>ساخت حساب کاربری</h1>
+    <p class="muted">برای شروع، اطلاعات زیر را وارد کنید.</p>
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% include "accounts/_form.html" %}
+        <button class="button button-block" type="submit">ساخت حساب</button>
+    </form>
+    <p class="auth-footer">حساب دارید؟ <a href="{% url 'accounts:login' %}">وارد شوید</a>.</p>
+</section>
+{% endblock %}

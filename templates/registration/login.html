@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}ورود | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="auth-card">
+    <p class="eyebrow">خوش آمدید</p>
+    <h1>ورود به حساب</h1>
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% include "accounts/_form.html" %}
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+        <button class="button button-block" type="submit">ورود</button>
+    </form>
+    <div class="auth-footer">
+        <a href="{% url 'accounts:password_reset' %}">رمز عبور را فراموش کرده‌اید؟</a>
+        <span>حساب ندارید؟ <a href="{% url 'accounts:register' %}">ثبت‌نام کنید</a>.</span>
+    </div>
+</section>
+{% endblock %}

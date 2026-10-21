@@ -9,7 +9,7 @@ class UserManager(BaseUserManager):
             raise ValueError("وارد کردن ایمیل الزامی است.")
 
         user = self.model(
-            email=self.normalize_email(email),
+            email=self.normalize_email(email).lower(),
             **extra_fields,
         )
         user.set_password(password)
