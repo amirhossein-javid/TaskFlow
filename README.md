@@ -1,6 +1,6 @@
 # TaskFlow
 
-TaskFlow is a team task management application built with Django 5.2 and PostgreSQL. It currently provides email-based authentication, user profiles, workspace membership management, and workspace-scoped projects.
+TaskFlow is a team task management application built with Django 5.2 and PostgreSQL. It currently provides email-based authentication, user profiles, workspace membership management, workspace-scoped projects, and Kanban task boards.
 
 ## Requirements
 
@@ -114,6 +114,14 @@ Project routes are nested below their workspace at `/workspaces/<slug>/projects/
 ```powershell
 docker compose run --rm web python manage.py migrate
 ```
+
+## Kanban boards and tasks
+
+Each project receives exactly one board with three initial workflow columns. Workspace members can create, edit, assign, move, reorder, and delete tasks. Owners and Admins can also create, rename, reorder, and safely delete empty columns. A column containing tasks cannot be deleted until those tasks are moved.
+
+Task ordering is serialized with database row locks and maintained as a dense, deterministic sequence. Assignees must be members of the same workspace, direct URLs remain workspace-scoped, and archived projects expose their board in read-only mode. The responsive Persian interface supports drag and drop plus keyboard- and mobile-accessible move controls.
+
+Board routes are nested below their project at `/workspaces/<slug>/projects/<project_id>/board/`.
 
 ## Language conventions
 

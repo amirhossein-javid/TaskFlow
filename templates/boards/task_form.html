@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}{% if task %}ویرایش وظیفه{% else %}وظیفهٔ جدید{% endif %} | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="form-page page-width">
+    <article class="card form-card task-form-card">
+        <p class="eyebrow">{{ project.name }} · {{ column.name }}</p>
+        <h1>{% if task %}ویرایش وظیفه{% else %}ساخت وظیفهٔ جدید{% endif %}</h1>
+        <p class="form-intro">اطلاعات لازم برای انجام شفاف این کار را ثبت کنید.</p>
+        <form method="post" novalidate>
+            {% csrf_token %}
+            {% if form.non_field_errors %}<div class="form-errors" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+            {% for field in form %}
+                <div class="field-group{% if field.errors %} field-error{% endif %}">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}{% if not field.field.required %}<span>اختیاری</span>{% endif %}</label>
+                    {{ field }}
+                    {% for error in field.errors %}<p class="error-text" role="alert">{{ error }}</p>{% endfor %}
+                </div>
+            {% endfor %}
+            <div class="form-actions">
+                <button class="button" type="submit">{% if task %}ذخیره تغییرات{% else %}ساخت وظیفه{% endif %}</button>
+                <a class="button button-ghost" href="{% if task %}{% url 'boards:task_detail' workspace.slug project.pk task.pk %}{% else %}{% url 'boards:detail' workspace.slug project.pk %}{% endif %}">انصراف</a>
+            </div>
+        </form>
+    </article>
+</section>
+{% endblock %}

@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "apps.accounts.apps.AccountsConfig",
     "apps.workspaces.apps.WorkspacesConfig",
     "apps.projects.apps.ProjectsConfig",
+    "apps.boards.apps.BoardsConfig",
 ]
 
 MIDDLEWARE = [

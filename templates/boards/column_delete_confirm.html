@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}حذف ستون | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="status-page page-width">
+    <article class="card status-card confirmation-card">
+        <div class="error-mark" aria-hidden="true"><span>×</span></div>
+        <h1>حذف ستون «{{ column.name }}»؟</h1>
+        {% if column.tasks.exists %}
+            <p>این ستون وظیفه دارد. پیش از حذف، همهٔ وظیفه‌ها را به ستون دیگری منتقل کنید.</p>
+        {% else %}
+            <p>این ستون خالی است و پس از تأیید حذف می‌شود.</p>
+        {% endif %}
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-actions form-actions-center">
+                <button class="button button-danger" type="submit"{% if column.tasks.exists %} disabled{% endif %}>حذف ستون</button>
+                <a class="button button-ghost" href="{% url 'boards:detail' workspace.slug project.pk %}">انصراف</a>
+            </div>
+        </form>
+    </article>
+</section>
+{% endblock %}
