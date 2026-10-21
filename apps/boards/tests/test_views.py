@@ -235,3 +235,124 @@ def test_move_requires_post_and_csrf(context):
         ).status_code
         == 403
     )
+
+
+def test_json_endpoints_return_stable_errors_for_invalid_payloads(client, context):
+    task = make_task(context)
+    client.force_login(context["owner"])
+
+    move_response = client.post(
+        reverse(
+            "boards:task_move",
+            args=[context["workspace"].slug, context["project"].pk, task.pk],
+        ),
+        data="not-json",
+        content_type="application/json",
+    )
+    reorder_response = client.post(
+        reverse(
+            "boards:column_reorder",
+            args=[context["workspace"].slug, context["project"].pk],
+        ),
+        data=json.dumps({"unexpected": []}),
+        content_type="application/json",
+    )
+
+    assert move_response.status_code == 400
+    assert move_response.json() == {"error": "درخواست جابه‌جایی معتبر نیست."}
+    assert reorder_response.status_code == 400
+    assert reorder_response.json() == {"error": "درخواست نامعتبر است."}
+
+
+def test_archived_project_blocks_remaining_board_mutations(client, context):
+    task = make_task(context)
+    column = context["board"].columns.first()
+    context["project"].status = Project.Status.ARCHIVED
+    context["project"].save(update_fields=["status"])
+    original_column_name = column.name
+    original_order = list(context["board"].columns.values_list("id", flat=True))
+
+    client.force_login(context["owner"])
+    assert (
+        client.post(
+            reverse(
+                "boards:column_create",
+                args=[context["workspace"].slug, context["project"].pk],
+            ),
+            {"name": "Blocked"},
+        ).status_code
+        == 302
+    )
+    assert (
+        client.post(
+            reverse(
+                "boards:column_rename",
+                args=[context["workspace"].slug, context["project"].pk, column.pk],
+            ),
+            {"name": "Blocked"},
+        ).status_code
+        == 302
+    )
+    reorder_response = client.post(
+        reverse(
+            "boards:column_reorder",
+            args=[context["workspace"].slug, context["project"].pk],
+        ),
+        data=json.dumps({"columns": list(reversed(original_order))}),
+        content_type="application/json",
+    )
+    assert reorder_response.status_code == 400
+    assert (
+        client.post(
+            reverse(
+                "boards:column_shift",
+                args=[context["workspace"].slug, context["project"].pk, column.pk],
+            ),
+            {"direction": "down"},
+        ).status_code
+        == 302
+    )
+    assert (
+        client.post(
+            reverse(
+                "boards:column_delete",
+                args=[context["workspace"].slug, context["project"].pk, column.pk],
+            )
+        ).status_code
+        == 302
+    )
+
+    assert (
+        client.get(
+            reverse(
+                "boards:task_edit",
+                args=[context["workspace"].slug, context["project"].pk, task.pk],
+            )
+        ).status_code
+        == 302
+    )
+    assert (
+        client.post(
+            reverse(
+                "boards:task_delete",
+                args=[context["workspace"].slug, context["project"].pk, task.pk],
+            )
+        ).status_code
+        == 302
+    )
+    assert (
+        client.post(
+            reverse(
+                "boards:task_nudge",
+                args=[context["workspace"].slug, context["project"].pk, task.pk],
+            ),
+            {"direction": "down"},
+        ).status_code
+        == 302
+    )
+
+    column.refresh_from_db()
+    task.refresh_from_db()
+    assert column.name == original_column_name
+    assert list(context["board"].columns.values_list("id", flat=True)) == original_order
+    assert Task.objects.filter(pk=task.pk).exists()
