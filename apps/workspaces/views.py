@@ -57,10 +57,16 @@ def workspace_create(request):
 def workspace_detail(request, slug):
     workspace, membership = get_workspace_membership(user=request.user, slug=slug)
     members = workspace.memberships.select_related("user", "user__profile")
+    active_project_count = workspace.projects.filter(status="active").count()
     return render(
         request,
         "workspaces/workspace_detail.html",
-        {"workspace": workspace, "membership": membership, "members": members},
+        {
+            "workspace": workspace,
+            "membership": membership,
+            "members": members,
+            "active_project_count": active_project_count,
+        },
     )
 
 

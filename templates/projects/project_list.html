@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}پروژه‌های {{ workspace.name }} | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="workspace-page page-width">
+    {% include "workspaces/_header.html" %}
+    <div class="section-heading-row">
+        <div><h2>پروژه‌های فعال</h2><p>پروژه‌های در حال اجرای این فضای کاری.</p></div>
+        {% if membership.role == 'owner' or membership.role == 'admin' %}<a class="button" href="{% url 'projects:create' workspace.slug %}">پروژهٔ جدید</a>{% endif %}
+    </div>
+    {% if active_projects %}
+        <div class="project-grid">
+            {% for project in active_projects %}
+                <a class="project-card" href="{% url 'projects:detail' workspace.slug project.pk %}">
+                    <span class="project-status project-status-active">فعال</span>
+                    <h3>{{ project.name }}</h3>
+                    <p>{{ project.description|default:"بدون توضیحات"|truncatechars:150 }}</p>
+                    <small>به‌روزرسانی {{ project.updated_at|date:"Y/m/d" }}</small>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state project-empty"><span class="empty-state-icon" aria-hidden="true">◫</span><h2>پروژهٔ فعالی وجود ندارد</h2><p>پروژه‌های جدید یا بازیابی‌شده اینجا نمایش داده می‌شوند.</p>{% if membership.role == 'owner' or membership.role == 'admin' %}<a class="button" href="{% url 'projects:create' workspace.slug %}">ساخت اولین پروژه</a>{% endif %}</div>
+    {% endif %}
+
+    <div class="section-heading-row archived-heading"><div><h2>بایگانی</h2><p>پروژه‌های متوقف‌شده همچنان قابل مشاهده‌اند.</p></div></div>
+    {% if archived_projects %}
+        <div class="project-grid project-grid-archived">
+            {% for project in archived_projects %}
+                <a class="project-card is-archived" href="{% url 'projects:detail' workspace.slug project.pk %}"><span class="project-status">بایگانی‌شده</span><h3>{{ project.name }}</h3><p>{{ project.description|default:"بدون توضیحات"|truncatechars:150 }}</p><small>به‌روزرسانی {{ project.updated_at|date:"Y/m/d" }}</small></a>
+            {% endfor %}
+        </div>
+    {% else %}<p class="muted">هنوز پروژه‌ای بایگانی نشده است.</p>{% endif %}
+</section>
+{% endblock %}

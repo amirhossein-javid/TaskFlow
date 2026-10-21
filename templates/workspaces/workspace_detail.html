@@ -6,6 +6,7 @@
 <section class="workspace-page page-width">
     {% include "workspaces/_header.html" %}
     <div class="workspace-overview-grid">
+        <article class="panel"><p class="eyebrow">پروژه‌های فعال</p><strong class="metric">{{ active_project_count }}</strong><p>پروژه در حال اجرا در این فضای کاری.</p><a href="{% url 'projects:list' workspace.slug %}">مشاهدهٔ پروژه‌ها ←</a>{% if membership.role == 'owner' or membership.role == 'admin' %}<a class="panel-secondary-link" href="{% url 'projects:create' workspace.slug %}">ساخت پروژهٔ جدید</a>{% endif %}</article>
         <article class="panel"><p class="eyebrow">اعضای تیم</p><strong class="metric">{{ members|length }}</strong><p>نفر در این فضای کاری حضور دارند.</p><a href="{% url 'workspaces:members' workspace.slug %}">مشاهدهٔ اعضا ←</a></article>
         <article class="panel"><p class="eyebrow">دسترسی شما</p><strong class="metric metric-text">{{ membership.get_role_display }}</strong><p>نقش فعلی شما در این فضای کاری.</p></article>
     </div>

@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+
+{% block title %}{% if project %}ویرایش پروژه{% else %}پروژهٔ جدید{% endif %} | TaskFlow{% endblock %}
+
+{% block content %}<section class="form-page page-width"><div class="form-card project-form-card"><div class="card-heading"><p class="eyebrow">{{ workspace.name }}</p><h1>{% if project %}ویرایش پروژه{% else %}ساخت پروژهٔ جدید{% endif %}</h1><p>{% if project %}نام و توضیحات پروژه را به‌روزرسانی کنید.{% else %}یک محدودهٔ روشن برای همکاری تیم تعریف کنید.{% endif %}</p></div><form method="post" novalidate>{% csrf_token %}{% include "accounts/_form.html" %}<div class="form-actions"><button class="button" type="submit">{% if project %}ذخیرهٔ تغییرات{% else %}ساخت پروژه{% endif %}</button><a class="button button-ghost" href="{% if project %}{% url 'projects:detail' workspace.slug project.pk %}{% else %}{% url 'projects:list' workspace.slug %}{% endif %}">انصراف</a></div></form></div></section>{% endblock %}
