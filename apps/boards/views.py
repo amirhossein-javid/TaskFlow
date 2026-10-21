@@ -20,8 +20,10 @@ from .services import (
     delete_column,
     delete_task,
     move_task,
+    nudge_task,
     rename_column,
     reorder_columns,
+    shift_column,
     update_task,
 )
 
@@ -137,20 +139,14 @@ def column_shift(request, slug, project_id, column_id):
     )
     require_manager(membership)
     column = get_object_or_404(BoardColumn, pk=column_id, board=board)
-    columns = list(board.columns.all())
-    index = columns.index(column)
-    direction = request.POST.get("direction")
-    target = index - 1 if direction == "up" else index + 1 if direction == "down" else index
-    if target != index and 0 <= target < len(columns):
-        columns[index], columns[target] = columns[target], columns[index]
-        try:
-            reorder_columns(
-                board=board,
-                actor=membership,
-                ordered_ids=[item.pk for item in columns],
-            )
-        except ValidationError as error:
-            _service_error(request, error)
+    try:
+        shift_column(
+            column=column,
+            actor=membership,
+            direction=request.POST.get("direction", ""),
+        )
+    except ValidationError as error:
+        _service_error(request, error)
     return _redirect_to_board(workspace, project)
 
 
@@ -369,27 +365,11 @@ def task_nudge(request, slug, project_id, task_id):
         user=request.user, slug=slug, project_id=project_id
     )
     task = _task_for_board(board=board, task_id=task_id)
-    columns = list(board.columns.all())
-    column_index = next(index for index, item in enumerate(columns) if item.pk == task.column_id)
-    direction = request.POST.get("direction")
-    target_column = task.column
-    target_position = task.position
-    if direction == "up":
-        target_position -= 1
-    elif direction == "down":
-        target_position += 1
-    elif direction == "previous" and column_index > 0:
-        target_column = columns[column_index - 1]
-        target_position = target_column.tasks.count()
-    elif direction == "next" and column_index < len(columns) - 1:
-        target_column = columns[column_index + 1]
-        target_position = target_column.tasks.count()
     try:
-        move_task(
+        nudge_task(
             task=task,
             actor=membership,
-            target_column=target_column,
-            target_position=target_position,
+            direction=request.POST.get("direction", ""),
         )
     except ValidationError as error:
         _service_error(request, error)

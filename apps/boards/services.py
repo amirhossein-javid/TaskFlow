@@ -63,6 +63,40 @@ def _rewrite_task_positions(board: Board, ordered_by_column: dict[int, list[Task
     Task.objects.bulk_update(changed, ["column", "position"])
 
 
+def _locked_board_order(board: Board) -> tuple[list[BoardColumn], list[Task]]:
+    columns = list(BoardColumn.objects.select_for_update().filter(board=board).order_by("pk"))
+    tasks = list(Task.objects.select_for_update().filter(column__board=board).order_by("pk"))
+    columns.sort(key=lambda column: (column.position, column.pk))
+    tasks.sort(key=lambda task: (task.column_id, task.position, task.pk))
+    return columns, tasks
+
+
+def _apply_task_move(
+    *,
+    board: Board,
+    columns: list[BoardColumn],
+    tasks: list[Task],
+    task_id: int,
+    target_column_id: int,
+    target_position: int,
+) -> Task:
+    task = next((item for item in tasks if item.pk == task_id), None)
+    if task is None:
+        raise ValidationError("وظیفهٔ موردنظر در این برد پیدا نشد.")
+    if target_column_id not in {column.pk for column in columns}:
+        raise ValidationError("ستون مقصد در این برد پیدا نشد.")
+    ordered_by_column = {
+        column.pk: [item for item in tasks if item.column_id == column.pk and item.pk != task.pk]
+        for column in columns
+    }
+    target_tasks = ordered_by_column[target_column_id]
+    position = max(0, min(target_position, len(target_tasks)))
+    target_tasks.insert(position, task)
+    _rewrite_task_positions(board, ordered_by_column)
+    task.refresh_from_db()
+    return task
+
+
 @transaction.atomic
 def create_column(*, board: Board, actor: WorkspaceMembership, name: str) -> BoardColumn:
     project, board = _locked_project_board(board_id=board.pk)
@@ -100,6 +134,31 @@ def reorder_columns(*, board: Board, actor: WorkspaceMembership, ordered_ids: li
     if len(ordered_ids) != len(columns) or set(ordered_ids) != set(by_id):
         raise ValidationError("ترتیب ستون‌ها معتبر نیست.")
     _rewrite_column_positions(board, [by_id[column_id] for column_id in ordered_ids])
+
+
+@transaction.atomic
+def shift_column(
+    *,
+    column: BoardColumn,
+    actor: WorkspaceMembership,
+    direction: str,
+) -> None:
+    project, board = _locked_project_board(board_id=column.board_id)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    _require_manager(actor)
+    _require_active(project)
+    columns = list(BoardColumn.objects.select_for_update().filter(board=board).order_by("pk"))
+    columns.sort(key=lambda item: (item.position, item.pk))
+    column = next((item for item in columns if item.pk == column.pk), None)
+    if column is None:
+        raise ValidationError("ستون موردنظر پیدا نشد.")
+    if direction not in {"up", "down"}:
+        raise ValidationError("جهت جابه‌جایی ستون معتبر نیست.")
+    index = columns.index(column)
+    target = index - 1 if direction == "up" else index + 1
+    if 0 <= target < len(columns):
+        columns[index], columns[target] = columns[target], columns[index]
+        _rewrite_column_positions(board, columns)
 
 
 @transaction.atomic
@@ -231,26 +290,57 @@ def move_task(
     project, board = _locked_project_board(board_id=task.column.board_id)
     _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
     _require_active(project)
-    target_column = BoardColumn.objects.select_for_update().get(
-        pk=target_column.pk,
+    columns, tasks = _locked_board_order(board)
+    return _apply_task_move(
         board=board,
+        columns=columns,
+        tasks=tasks,
+        task_id=task.pk,
+        target_column_id=target_column.pk,
+        target_position=target_position,
     )
-    tasks = list(
-        Task.objects.select_for_update()
-        .filter(column__board=board)
-        .select_related("column")
-        .order_by("column_id", "position", "id")
-    )
+
+
+@transaction.atomic
+def nudge_task(
+    *,
+    task: Task,
+    actor: WorkspaceMembership,
+    direction: str,
+) -> Task:
+    project, board = _locked_project_board(board_id=task.column.board_id)
+    _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    _require_active(project)
+    columns, tasks = _locked_board_order(board)
     task = next((item for item in tasks if item.pk == task.pk), None)
     if task is None:
         raise ValidationError("وظیفهٔ موردنظر در این برد پیدا نشد.")
-    ordered_by_column = {
-        column_id: [item for item in tasks if item.column_id == column_id and item.pk != task.pk]
-        for column_id in BoardColumn.objects.filter(board=board).values_list("id", flat=True)
-    }
-    target_tasks = ordered_by_column[target_column.pk]
-    position = max(0, min(target_position, len(target_tasks)))
-    target_tasks.insert(position, task)
-    _rewrite_task_positions(board, ordered_by_column)
-    task.refresh_from_db()
-    return task
+    if direction not in {"up", "down", "previous", "next"}:
+        raise ValidationError("جهت جابه‌جایی وظیفه معتبر نیست.")
+    column_index = next(
+        index for index, column in enumerate(columns) if column.pk == task.column_id
+    )
+    target_column_id = task.column_id
+    target_position = task.position
+    if direction == "up":
+        target_position -= 1
+    elif direction == "down":
+        target_position += 1
+    elif direction == "previous" and column_index > 0:
+        target_column_id = columns[column_index - 1].pk
+        target_position = sum(
+            item.column_id == target_column_id and item.pk != task.pk for item in tasks
+        )
+    elif direction == "next" and column_index < len(columns) - 1:
+        target_column_id = columns[column_index + 1].pk
+        target_position = sum(
+            item.column_id == target_column_id and item.pk != task.pk for item in tasks
+        )
+    return _apply_task_move(
+        board=board,
+        columns=columns,
+        tasks=tasks,
+        task_id=task.pk,
+        target_column_id=target_column_id,
+        target_position=target_position,
+    )

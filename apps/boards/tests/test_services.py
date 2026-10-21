@@ -11,8 +11,10 @@ from apps.boards.services import (
     delete_column,
     delete_task,
     move_task,
+    nudge_task,
     rename_column,
     reorder_columns,
+    shift_column,
     update_task,
 )
 from apps.projects.models import Project
@@ -169,6 +171,79 @@ def test_move_task_between_columns_keeps_dense_deterministic_order(board_context
     assert list(target.tasks.values_list("title", "position")) == [
         ("First", 0),
         ("Second", 1),
+    ]
+
+
+def test_move_task_within_column_respects_unique_positions(board_context):
+    actor = board_context["member_membership"]
+    column = board_context["board"].columns.first()
+    tasks = [
+        create_task(
+            column=column,
+            actor=actor,
+            title=title,
+            description="",
+            priority=Task.Priority.MEDIUM,
+            due_date=None,
+            assignee=None,
+        )
+        for title in ["First", "Second", "Third"]
+    ]
+
+    move_task(task=tasks[2], actor=actor, target_column=column, target_position=0)
+    move_task(task=tasks[0], actor=actor, target_column=column, target_position=2)
+
+    assert list(column.tasks.values_list("title", "position")) == [
+        ("Third", 0),
+        ("Second", 1),
+        ("First", 2),
+    ]
+
+
+def test_nudge_uses_fresh_task_position_after_prior_move(board_context):
+    actor = board_context["member_membership"]
+    column = board_context["board"].columns.first()
+    first, second, _third = [
+        create_task(
+            column=column,
+            actor=actor,
+            title=title,
+            description="",
+            priority=Task.Priority.MEDIUM,
+            due_date=None,
+            assignee=None,
+        )
+        for title in ["First", "Second", "Third"]
+    ]
+    stale_second = Task.objects.select_related("column").get(pk=second.pk)
+    move_task(task=second, actor=actor, target_column=column, target_position=0)
+
+    nudge_task(task=stale_second, actor=actor, direction="down")
+
+    assert list(column.tasks.values_list("title", "position")) == [
+        (first.title, 0),
+        (second.title, 1),
+        ("Third", 2),
+    ]
+
+
+def test_shift_column_uses_fresh_order_after_prior_reorder(board_context):
+    board = board_context["board"]
+    actor = board_context["owner_membership"]
+    original = list(board.columns.all())
+    stale_middle = original[1]
+    reorder_columns(
+        board=board,
+        actor=actor,
+        ordered_ids=[column.pk for column in reversed(original)],
+    )
+
+    shift_column(column=stale_middle, actor=actor, direction="up")
+
+    assert list(board.columns.values_list("id", flat=True)) == [
+        stale_middle.pk,
+        original[2].pk,
+        original[0].pk,
     ]
 
 
