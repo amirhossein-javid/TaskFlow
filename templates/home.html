@@ -1,9 +1,93 @@
 {% extends "base.html" %}
 
+{% block title %}TaskFlow | مدیریت شفاف کار تیمی{% endblock %}
+
 {% block content %}
-<section class="hero">
-    <p class="eyebrow">TaskFlow</p>
-    <h1>فضای کاری تیم شما آماده است.</h1>
-    <p>زیرساخت اولیهٔ برنامه با موفقیت در حال اجرا است.</p>
+<section class="hero page-width">
+    <div class="hero-copy">
+        <div class="hero-badge">
+            <span class="status-pulse" aria-hidden="true"></span>
+            فضای متمرکز برای تیم‌های هماهنگ
+        </div>
+        <h1>کار تیمی،<br><span>روشن و منظم.</span></h1>
+        <p class="hero-lead">TaskFlow کمک می‌کند مسیر کارها شفاف بماند، تمرکز تیم حفظ شود و هیچ جزئیاتی از چشم نیفتد.</p>
+        <div class="actions">
+            {% if user.is_authenticated %}
+                <a class="button button-large" href="{% url 'accounts:profile' %}">
+                    مشاهدهٔ پروفایل
+                    <span aria-hidden="true">←</span>
+                </a>
+            {% else %}
+                <a class="button button-large" href="{% url 'accounts:register' %}">
+                    رایگان شروع کنید
+                    <span aria-hidden="true">←</span>
+                </a>
+                <a class="button button-secondary button-large" href="{% url 'accounts:login' %}">ورود به حساب</a>
+            {% endif %}
+        </div>
+        <div class="hero-trust" aria-label="ویژگی‌های TaskFlow">
+            <span><i aria-hidden="true">✓</i> ساده و سریع</span>
+            <span><i aria-hidden="true">✓</i> امن و قابل اعتماد</span>
+            <span><i aria-hidden="true">✓</i> ساخته‌شده برای تیم</span>
+        </div>
+    </div>
+
+    <div class="hero-visual" aria-label="نمایی از جریان منظم کار تیمی">
+        <div class="visual-glow" aria-hidden="true"></div>
+        <div class="workspace-preview">
+            <div class="preview-topbar">
+                <div class="preview-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                <span>نمای کلی تیم</span>
+                <div class="preview-avatars" aria-hidden="true"><i>م</i><i>س</i><i>ن</i></div>
+            </div>
+            <div class="preview-body">
+                <aside class="preview-sidebar" aria-hidden="true">
+                    <span class="preview-logo"></span>
+                    <span></span><span></span><span></span><span></span>
+                </aside>
+                <div class="preview-content">
+                    <div class="preview-heading">
+                        <div><small>این هفته</small><strong>تمرکز تیم</strong></div>
+                        <span class="preview-chip">همگام</span>
+                    </div>
+                    <div class="progress-panel">
+                        <div class="progress-copy"><span>پیشرفت</span><strong>۷۲٪</strong></div>
+                        <div class="progress-track"><span></span></div>
+                    </div>
+                    <div class="workflow-list">
+                        <div class="workflow-row is-complete">
+                            <span class="row-status" aria-hidden="true">✓</span>
+                            <div><strong>مرور برنامهٔ هفته</strong><small>انجام شد</small></div>
+                            <span class="row-tag">تیم</span>
+                        </div>
+                        <div class="workflow-row">
+                            <span class="row-status" aria-hidden="true"></span>
+                            <div><strong>هماهنگی اولویت‌ها</strong><small>در حال انجام</small></div>
+                            <span class="row-tag row-tag-accent">امروز</span>
+                        </div>
+                        <div class="workflow-row">
+                            <span class="row-status" aria-hidden="true"></span>
+                            <div><strong>جمع‌بندی بازخوردها</strong><small>مرحلهٔ بعد</small></div>
+                            <span class="row-tag">بعدی</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="floating-card floating-card-one" aria-hidden="true">
+            <span class="floating-icon">✓</span>
+            <div><strong>یک قدم جلوتر</strong><small>همه‌چیز در مسیر است</small></div>
+        </div>
+        <div class="floating-card floating-card-two" aria-hidden="true">
+            <span class="avatar-mini">ر</span>
+            <div><strong>تیم همراه است</strong><small>لحظاتی پیش</small></div>
+        </div>
+    </div>
+</section>
+
+<section class="value-strip page-width" aria-label="ارزش‌های TaskFlow">
+    <article><span class="value-number">۰۱</span><div><h2>تمرکز بدون حواس‌پرتی</h2><p>اطلاعات ضروری، درست همان‌جایی که لازم دارید.</p></div></article>
+    <article><span class="value-number">۰۲</span><div><h2>هماهنگی بی‌وقفه</h2><p>تصویری مشترک از مسیر، برای تمام اعضای تیم.</p></div></article>
+    <article><span class="value-number">۰۳</span><div><h2>پیشرفت قابل مشاهده</h2><p>از تصمیم تا نتیجه، شفاف و قابل پیگیری.</p></div></article>
 </section>
 {% endblock %}

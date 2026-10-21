@@ -14,7 +14,7 @@ User = get_user_model()
 def test_create_user_normalizes_email_and_creates_profile():
     user = User.objects.create_user("Person@EXAMPLE.COM", "a-secure-password")
 
-    assert user.email == "Person@example.com"
+    assert user.email == "person@example.com"
     assert user.is_active is True
     assert user.is_staff is False
     assert user.is_superuser is False

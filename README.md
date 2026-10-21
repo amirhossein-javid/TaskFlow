@@ -1,6 +1,6 @@
 # TaskFlow
 
-TaskFlow is the initial foundation of a team task management application built with Django 5.2 and PostgreSQL. This stage contains only the project infrastructure and custom account models.
+TaskFlow is a team task management application built with Django 5.2 and PostgreSQL. Phase 1 provides email-based authentication, password management, and user profiles.
 
 ## Requirements
 
@@ -28,6 +28,17 @@ docker compose run --rm web python manage.py createsuperuser
 ```
 
 The Django Admin is available at `http://localhost:8000/admin/`.
+
+## Authentication and profiles
+
+The accounts application provides:
+
+- Email-based registration, login, and logout
+- Secure password change and password reset using Django's built-in token system
+- Profile editing for full name, biography, and avatar
+- Protected account pages and authentication-aware navigation
+
+The main account routes are under `/accounts/`. Development password-reset emails are written to the console by default.
 
 ## Run tests
 
@@ -67,6 +78,18 @@ pre-commit run --all-files
 - Production: `config.settings.production`
 
 Production requires at least `DJANGO_SECRET_KEY` and `DJANGO_ALLOWED_HOSTS`. Never commit `.env` files. Configure TLS, `CSRF_TRUSTED_ORIGINS`, and allowed hosts for the target environment before deployment.
+
+Production email delivery uses Django's SMTP backend by default. Configure these environment variables for the target mail provider:
+
+- `DJANGO_EMAIL_HOST`
+- `DJANGO_EMAIL_PORT`
+- `DJANGO_EMAIL_HOST_USER`
+- `DJANGO_EMAIL_HOST_PASSWORD`
+- `DJANGO_EMAIL_USE_TLS`
+- `DJANGO_EMAIL_USE_SSL`
+- `DJANGO_DEFAULT_FROM_EMAIL`
+
+Set `DJANGO_EMAIL_BACKEND` only when a different Django email backend is required.
 
 Standard Django user-creation paths automatically create the related Profile. Django does not emit model signals for `bulk_create()`, so callers that use it must create the corresponding profiles explicitly in bulk.
 

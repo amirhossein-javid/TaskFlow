@@ -33,7 +33,9 @@ RUN pip install --no-index --find-links=/wheels /wheels/* \
     && rm -rf /wheels
 
 COPY --chown=taskflow:taskflow . .
-RUN chown taskflow:taskflow /app
+RUN python manage.py collectstatic --noinput --clear \
+    && chown taskflow:taskflow /app \
+    && chown -R taskflow:taskflow /app/staticfiles
 
 USER taskflow
 
