@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}ساخت فضای کاری | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="form-page page-width">
+    <div class="form-card">
+        <div class="card-heading"><p class="eyebrow">فضای جدید</p><h1>ساخت فضای کاری</h1><p>یک محیط مستقل برای همکاری تیم خود بسازید.</p></div>
+        <form method="post" novalidate>
+            {% csrf_token %}{% include "accounts/_form.html" %}
+            <div class="form-actions"><button class="button" type="submit">ساخت فضای کاری</button><a class="button button-ghost" href="{% url 'workspaces:list' %}">انصراف</a></div>
+        </form>
+    </div>
+</section>
+{% endblock %}

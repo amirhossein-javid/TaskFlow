@@ -13,8 +13,8 @@
         <p class="hero-lead">TaskFlow کمک می‌کند مسیر کارها شفاف بماند، تمرکز تیم حفظ شود و هیچ جزئیاتی از چشم نیفتد.</p>
         <div class="actions">
             {% if user.is_authenticated %}
-                <a class="button button-large" href="{% url 'accounts:profile' %}">
-                    مشاهدهٔ پروفایل
+                <a class="button button-large" href="{% url 'workspaces:list' %}">
+                    مشاهدهٔ فضاهای کاری
                     <span aria-hidden="true">←</span>
                 </a>
             {% else %}

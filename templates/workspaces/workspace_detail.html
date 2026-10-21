@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}{{ workspace.name }} | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="workspace-page page-width">
+    {% include "workspaces/_header.html" %}
+    <div class="workspace-overview-grid">
+        <article class="panel"><p class="eyebrow">اعضای تیم</p><strong class="metric">{{ members|length }}</strong><p>نفر در این فضای کاری حضور دارند.</p><a href="{% url 'workspaces:members' workspace.slug %}">مشاهدهٔ اعضا ←</a></article>
+        <article class="panel"><p class="eyebrow">دسترسی شما</p><strong class="metric metric-text">{{ membership.get_role_display }}</strong><p>نقش فعلی شما در این فضای کاری.</p></article>
+    </div>
+    <div class="danger-link-row"><a href="{% url 'workspaces:leave' workspace.slug %}">ترک فضای کاری</a></div>
+</section>
+{% endblock %}

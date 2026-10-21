@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}فضاهای کاری | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="workspace-page page-width">
+    <div class="page-heading-row">
+        <div><p class="eyebrow">TaskFlow</p><h1>فضاهای کاری شما</h1><p>محیط هر تیم را جدا و امن مدیریت کنید.</p></div>
+        <a class="button" href="{% url 'workspaces:create' %}">ساخت فضای کاری</a>
+    </div>
+    {% if memberships %}
+        <div class="workspace-grid">
+            {% for item in memberships %}
+                <a class="workspace-card" href="{% url 'workspaces:detail' item.workspace.slug %}">
+                    <span class="workspace-card-mark" aria-hidden="true">{{ item.workspace.name|first }}</span>
+                    <span><strong>{{ item.workspace.name }}</strong><small>{{ item.get_role_display }}</small></span>
+                    <span class="workspace-card-arrow" aria-hidden="true">←</span>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <span class="empty-state-icon" aria-hidden="true">◇</span>
+            <h2>هنوز فضای کاری ندارید</h2>
+            <p>اولین فضای کاری را بسازید و بعد هم‌تیمی‌ها را دعوت کنید.</p>
+            <a class="button" href="{% url 'workspaces:create' %}">ساخت اولین فضای کاری</a>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

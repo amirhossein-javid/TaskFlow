@@ -1,0 +1,14 @@
+<header class="workspace-header">
+    <div>
+        <p class="eyebrow">فضای کاری</p>
+        <h1>{{ workspace.name }}</h1>
+        <p class="workspace-slug" dir="ltr">{{ workspace.slug }}</p>
+    </div>
+    <nav class="workspace-tabs" aria-label="بخش‌های فضای کاری">
+        <a href="{% url 'workspaces:detail' workspace.slug %}">نمای کلی</a>
+        <a href="{% url 'workspaces:members' workspace.slug %}">اعضا</a>
+        {% if membership.role == 'owner' %}
+            <a href="{% url 'workspaces:settings' workspace.slug %}">تنظیمات</a>
+        {% endif %}
+    </nav>
+</header>

@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+
+{% block title %}تنظیمات {{ workspace.name }} | TaskFlow{% endblock %}
+
+{% block content %}<section class="workspace-page page-width">{% include "workspaces/_header.html" %}<div class="form-card compact-card"><div class="card-heading"><h2>نام و شناسه</h2><p>اطلاعات اصلی فضای کاری را ویرایش کنید.</p></div><form method="post" novalidate>{% csrf_token %}{% include "accounts/_form.html" %}<button class="button" type="submit">ذخیرهٔ تغییرات</button></form></div><div class="danger-zone"><div><h2>حذف فضای کاری</h2><p>این کار تمام عضویت‌ها و دعوت‌ها را برای همیشه حذف می‌کند.</p></div><a class="button button-danger" href="{% url 'workspaces:delete' workspace.slug %}">حذف فضای کاری</a></div></section>{% endblock %}
