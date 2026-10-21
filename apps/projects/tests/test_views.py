@@ -150,6 +150,81 @@ def test_archived_project_cannot_be_edited(client):
     assert project.name == "Archived"
 
 
+def test_manager_can_edit_active_project(client):
+    workspace, _, admin, *_ = setup_workspace()
+    project = Project.objects.create(workspace=workspace, name="Launch", creator=admin)
+    client.force_login(admin)
+
+    response = client.post(
+        reverse("projects:edit", args=[workspace.slug, project.pk]),
+        {"name": "Launch updated", "description": "New scope"},
+    )
+
+    assert response.status_code == 302
+    project.refresh_from_db()
+    assert project.name == "Launch updated"
+    assert project.description == "New scope"
+
+
+def test_invalid_project_form_shows_persian_error(client):
+    workspace, owner, *_ = setup_workspace()
+    client.force_login(owner)
+
+    response = client.post(
+        reverse("projects:create", args=[workspace.slug]),
+        {"name": "   ", "description": ""},
+    )
+
+    assert response.status_code == 200
+    assert "نام پروژه نمی‌تواند خالی باشد" in response.content.decode()
+    assert not Project.objects.filter(workspace=workspace).exists()
+
+
+def test_cross_workspace_project_cannot_be_edited_or_archived(client):
+    first_workspace, first_owner, *_ = setup_workspace()
+    second_owner = User.objects.create_user(
+        email="second-manager@example.com", password="SecurePass123!"
+    )
+    second_workspace = create_workspace(user=second_owner, name="Second", slug="second")
+    foreign_project = Project.objects.create(
+        workspace=second_workspace, name="Foreign", creator=second_owner
+    )
+    client.force_login(first_owner)
+
+    edit_response = client.post(
+        reverse("projects:edit", args=[first_workspace.slug, foreign_project.pk]),
+        {"name": "Compromised", "description": ""},
+    )
+    archive_response = client.post(
+        reverse("projects:archive", args=[first_workspace.slug, foreign_project.pk])
+    )
+
+    assert edit_response.status_code == 404
+    assert archive_response.status_code == 404
+    foreign_project.refresh_from_db()
+    assert foreign_project.name == "Foreign"
+    assert foreign_project.status == Project.Status.ACTIVE
+
+
+def test_workspace_detail_links_projects_and_shows_active_count(client):
+    workspace, owner, *_ = setup_workspace()
+    Project.objects.create(workspace=workspace, name="Active", creator=owner)
+    Project.objects.create(
+        workspace=workspace,
+        name="Archived",
+        creator=owner,
+        status=Project.Status.ARCHIVED,
+    )
+    client.force_login(owner)
+
+    response = client.get(reverse("workspaces:detail", args=[workspace.slug]))
+    content = response.content.decode()
+
+    assert response.context["active_project_count"] == 1
+    assert reverse("projects:list", args=[workspace.slug]) in content
+    assert reverse("projects:create", args=[workspace.slug]) in content
+
+
 def test_archive_endpoint_rejects_missing_csrf_token():
     workspace, owner, *_ = setup_workspace()
     project = Project.objects.create(workspace=workspace, name="Launch", creator=owner)
