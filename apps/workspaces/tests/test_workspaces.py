@@ -83,6 +83,21 @@ def test_workspace_list_only_contains_users_workspaces(client):
     assert hidden_workspace.name not in response.content.decode()
 
 
+def test_read_only_workspace_pages_reject_post_and_accept_head(client):
+    owner = make_user("owner@example.com")
+    workspace, _ = make_workspace(owner)
+    client.force_login(owner)
+    urls = [
+        reverse("workspaces:list"),
+        reverse("workspaces:detail", args=[workspace.slug]),
+        reverse("workspaces:members", args=[workspace.slug]),
+    ]
+
+    for url in urls:
+        assert client.head(url).status_code == 200
+        assert client.post(url).status_code == 405
+
+
 def test_owner_can_promote_member_and_cannot_demote_last_owner():
     owner = make_user("owner@example.com")
     member_user = make_user("member@example.com")
