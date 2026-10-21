@@ -96,6 +96,43 @@ def test_read_only_workspace_pages_reject_post_and_accept_head(client):
     for url in urls:
         assert client.head(url).status_code == 200
         assert client.post(url).status_code == 405
+        assert client.put(url).status_code == 405
+        assert client.options(url).status_code == 405
+
+
+def test_workspace_form_and_action_views_preserve_original_method_contracts(client):
+    owner = make_user("owner@example.com")
+    member_user = make_user("member@example.com")
+    workspace, owner_membership = make_workspace(owner)
+    member = add_member(workspace, member_user)
+    _, token = create_invitation(
+        workspace=workspace,
+        actor=owner_membership,
+        email="invitee@example.com",
+        role=WorkspaceMembership.Role.MEMBER,
+    )
+    client.force_login(owner)
+
+    get_post_urls = [
+        reverse("workspaces:create"),
+        reverse("workspaces:settings", args=[workspace.slug]),
+        reverse("workspaces:invite", args=[workspace.slug]),
+        reverse("workspaces:remove_member", args=[workspace.slug, member.pk]),
+        reverse("workspaces:leave", args=[workspace.slug]),
+        reverse("workspaces:delete", args=[workspace.slug]),
+        reverse("workspaces:invitation", args=[token]),
+    ]
+    for url in get_post_urls:
+        assert client.get(url).status_code == 200
+        assert client.put(url).status_code == 405
+        assert client.head(url).status_code == 405
+        assert client.options(url).status_code == 405
+
+    post_only_url = reverse("workspaces:change_role", args=[workspace.slug, member.pk])
+    assert client.get(post_only_url).status_code == 405
+    assert client.put(post_only_url).status_code == 405
+    assert client.head(post_only_url).status_code == 405
+    assert client.options(post_only_url).status_code == 405
 
 
 def test_owner_can_promote_member_and_cannot_demote_last_owner():
@@ -389,6 +426,24 @@ def test_invitation_view_supports_login_and_registration_redirect(client):
     )
     assert registration_response.status_code == 302
     assert registration_response.url == f"{reverse('accounts:login')}?next={invitation_path}"
+
+
+def test_invitation_post_resolves_token_before_anonymous_login_redirect(client):
+    owner = make_user("owner@example.com")
+    workspace, owner_membership = make_workspace(owner)
+    _, token = create_invitation(
+        workspace=workspace,
+        actor=owner_membership,
+        email="new@example.com",
+        role=WorkspaceMembership.Role.MEMBER,
+    )
+
+    invalid_response = client.post(reverse("workspaces:invitation", args=["invalid-token"]))
+    valid_response = client.post(reverse("workspaces:invitation", args=[token]))
+
+    assert invalid_response.status_code == 404
+    assert valid_response.status_code == 302
+    assert valid_response.url.startswith(reverse("accounts:login"))
 
 
 def test_cross_workspace_membership_id_cannot_be_modified(client):

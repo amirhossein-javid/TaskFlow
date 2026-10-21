@@ -33,7 +33,7 @@ def _service_error(request, error: ValidationError) -> None:
 
 class BoardDetailView(BoardAccessMixin, TemplateView):
     template_name = "boards/board_detail.html"
-    http_method_names = ["get", "head", "options"]
+    http_method_names = ["get", "head"]
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -50,7 +50,7 @@ class BoardDetailView(BoardAccessMixin, TemplateView):
 
 
 class ColumnCreateView(BoardManagerRequiredMixin, View):
-    http_method_names = ["post", "options"]
+    http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
         form = BoardColumnForm(request.POST)
@@ -67,7 +67,7 @@ class ColumnCreateView(BoardManagerRequiredMixin, View):
 
 
 class ColumnRenameView(BoardManagerRequiredMixin, View):
-    http_method_names = ["post", "options"]
+    http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
         column = self.get_column()
@@ -85,7 +85,7 @@ class ColumnRenameView(BoardManagerRequiredMixin, View):
 
 
 class ColumnReorderView(BoardManagerRequiredMixin, View):
-    http_method_names = ["post", "options"]
+    http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
         try:
@@ -104,7 +104,7 @@ class ColumnReorderView(BoardManagerRequiredMixin, View):
 
 
 class ColumnShiftView(BoardManagerRequiredMixin, View):
-    http_method_names = ["post", "options"]
+    http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
         try:
@@ -120,7 +120,7 @@ class ColumnShiftView(BoardManagerRequiredMixin, View):
 
 class ColumnDeleteView(BoardManagerRequiredMixin, View):
     template_name = "boards/column_delete_confirm.html"
-    http_method_names = ["get", "post", "head", "options"]
+    http_method_names = ["get", "post"]
 
     def get(self, request, *args, **kwargs):
         return render(
@@ -147,6 +147,11 @@ class ColumnDeleteView(BoardManagerRequiredMixin, View):
 class TaskCreateView(BoardAccessMixin, FormView):
     template_name = "boards/task_form.html"
     form_class = TaskForm
+    http_method_names = ["get", "post"]
+
+    def check_workspace_permission(self):
+        super().check_workspace_permission()
+        self.column = self.get_column()
 
     def archived_response(self):
         messages.error(self.request, "پروژهٔ بایگانی‌شده فقط قابل مشاهده است.")
@@ -164,14 +169,14 @@ class TaskCreateView(BoardAccessMixin, FormView):
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        kwargs["instance"] = Task(column=self.get_column())
+        kwargs["instance"] = Task(column=self.column)
         kwargs["workspace"] = self.workspace
         return kwargs
 
     def form_valid(self, form):
         try:
             task = create_task(
-                column=self.get_column(),
+                column=self.column,
                 actor=self.membership,
                 **form.cleaned_data,
             )
@@ -188,7 +193,7 @@ class TaskCreateView(BoardAccessMixin, FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["column"] = self.get_column()
+        context["column"] = self.column
         context["task"] = None
         return context
 
@@ -196,7 +201,7 @@ class TaskCreateView(BoardAccessMixin, FormView):
 class TaskDetailView(BoardAccessMixin, DetailView):
     template_name = "boards/task_detail.html"
     context_object_name = "task"
-    http_method_names = ["get", "head", "options"]
+    http_method_names = ["get", "head"]
 
     def get_object(self, queryset=None):
         return self.get_task()
@@ -206,6 +211,7 @@ class TaskEditView(BoardAccessMixin, UpdateView):
     template_name = "boards/task_form.html"
     form_class = TaskForm
     context_object_name = "task"
+    http_method_names = ["get", "post"]
 
     def get_object(self, queryset=None):
         return self.get_task()
@@ -260,7 +266,7 @@ class TaskEditView(BoardAccessMixin, UpdateView):
 
 class TaskDeleteView(BoardAccessMixin, View):
     template_name = "boards/task_delete_confirm.html"
-    http_method_names = ["get", "post", "head", "options"]
+    http_method_names = ["get", "post"]
 
     def archived_response(self):
         task = self.get_task()
@@ -299,7 +305,7 @@ class TaskDeleteView(BoardAccessMixin, View):
 
 
 class TaskMoveView(BoardAccessMixin, View):
-    http_method_names = ["post", "options"]
+    http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
         task = self.get_task()
@@ -321,7 +327,7 @@ class TaskMoveView(BoardAccessMixin, View):
 
 
 class TaskNudgeView(BoardAccessMixin, View):
-    http_method_names = ["post", "options"]
+    http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
         try:

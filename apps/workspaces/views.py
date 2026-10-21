@@ -40,7 +40,7 @@ class InvitationDeliveryError(Exception):
 class WorkspaceListView(LoginRequiredMixin, ListView):
     template_name = "workspaces/workspace_list.html"
     context_object_name = "memberships"
-    http_method_names = ["get", "head", "options"]
+    http_method_names = ["get", "head"]
 
     def get_queryset(self):
         return WorkspaceMembership.objects.filter(user=self.request.user).select_related(
@@ -51,6 +51,7 @@ class WorkspaceListView(LoginRequiredMixin, ListView):
 class WorkspaceCreateView(LoginRequiredMixin, FormView):
     template_name = "workspaces/workspace_form.html"
     form_class = WorkspaceForm
+    http_method_names = ["get", "post"]
 
     def form_valid(self, form):
         workspace = create_workspace(user=self.request.user, **form.cleaned_data)
@@ -60,7 +61,7 @@ class WorkspaceCreateView(LoginRequiredMixin, FormView):
 
 class WorkspaceDetailView(WorkspaceAccessMixin, TemplateView):
     template_name = "workspaces/workspace_detail.html"
-    http_method_names = ["get", "head", "options"]
+    http_method_names = ["get", "head"]
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -71,7 +72,7 @@ class WorkspaceDetailView(WorkspaceAccessMixin, TemplateView):
 
 class MemberListView(WorkspaceAccessMixin, TemplateView):
     template_name = "workspaces/member_list.html"
-    http_method_names = ["get", "head", "options"]
+    http_method_names = ["get", "head"]
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -86,6 +87,7 @@ class MemberListView(WorkspaceAccessMixin, TemplateView):
 class WorkspaceSettingsView(WorkspaceOwnerRequiredMixin, UpdateView):
     form_class = WorkspaceForm
     template_name = "workspaces/workspace_settings.html"
+    http_method_names = ["get", "post"]
 
     def get_object(self, queryset=None):
         return self.workspace
@@ -99,6 +101,7 @@ class WorkspaceSettingsView(WorkspaceOwnerRequiredMixin, UpdateView):
 class InviteMemberView(WorkspaceManagerRequiredMixin, FormView):
     form_class = InvitationForm
     template_name = "workspaces/invitation_form.html"
+    http_method_names = ["get", "post"]
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
@@ -152,7 +155,7 @@ class InviteMemberView(WorkspaceManagerRequiredMixin, FormView):
 
 
 class ChangeRoleView(WorkspaceOwnerRequiredMixin, View):
-    http_method_names = ["post", "options"]
+    http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
         target = get_object_or_404(
@@ -179,7 +182,7 @@ class ChangeRoleView(WorkspaceOwnerRequiredMixin, View):
 
 class RemoveMemberView(WorkspaceManagerRequiredMixin, View):
     template_name = "workspaces/member_remove_confirm.html"
-    http_method_names = ["get", "post", "head", "options"]
+    http_method_names = ["get", "post"]
 
     def get_target(self):
         if not hasattr(self, "target"):
@@ -218,7 +221,7 @@ class RemoveMemberView(WorkspaceManagerRequiredMixin, View):
 
 class WorkspaceLeaveView(WorkspaceAccessMixin, View):
     template_name = "workspaces/workspace_leave_confirm.html"
-    http_method_names = ["get", "post", "head", "options"]
+    http_method_names = ["get", "post"]
 
     def get(self, request, *args, **kwargs):
         return render(
@@ -240,6 +243,7 @@ class WorkspaceLeaveView(WorkspaceAccessMixin, View):
 class WorkspaceDeleteView(WorkspaceOwnerRequiredMixin, FormView):
     form_class = WorkspaceDeleteForm
     template_name = "workspaces/workspace_delete_confirm.html"
+    http_method_names = ["get", "post"]
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
@@ -260,7 +264,7 @@ class WorkspaceDeleteView(WorkspaceOwnerRequiredMixin, FormView):
 
 class InvitationDetailView(View):
     template_name = "workspaces/invitation_detail.html"
-    http_method_names = ["get", "post", "head", "options"]
+    http_method_names = ["get", "post"]
 
     def get_invitation(self):
         invitation = (
@@ -285,6 +289,7 @@ class InvitationDetailView(View):
         return self.render_invitation(request)
 
     def post(self, request, *args, **kwargs):
+        self.get_invitation()
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
         try:

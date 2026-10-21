@@ -88,6 +88,70 @@ def test_read_only_board_pages_accept_head_and_reject_post(client, context):
     for url in [board_url(context), task_url]:
         assert client.head(url).status_code == 200
         assert client.post(url).status_code == 405
+        assert client.put(url).status_code == 405
+        assert client.options(url).status_code == 405
+
+
+def test_board_form_and_action_views_preserve_original_method_contracts(client, context):
+    task = make_task(context)
+    column = context["board"].columns.first()
+    client.force_login(context["owner"])
+
+    get_post_urls = [
+        reverse(
+            "boards:column_delete",
+            args=[context["workspace"].slug, context["project"].pk, column.pk],
+        ),
+        reverse(
+            "boards:task_create",
+            args=[context["workspace"].slug, context["project"].pk, column.pk],
+        ),
+        reverse(
+            "boards:task_edit",
+            args=[context["workspace"].slug, context["project"].pk, task.pk],
+        ),
+        reverse(
+            "boards:task_delete",
+            args=[context["workspace"].slug, context["project"].pk, task.pk],
+        ),
+    ]
+    for url in get_post_urls:
+        assert client.get(url).status_code == 200
+        assert client.put(url).status_code == 405
+        assert client.head(url).status_code == 405
+        assert client.options(url).status_code == 405
+
+    post_only_urls = [
+        reverse(
+            "boards:column_create",
+            args=[context["workspace"].slug, context["project"].pk],
+        ),
+        reverse(
+            "boards:column_rename",
+            args=[context["workspace"].slug, context["project"].pk, column.pk],
+        ),
+        reverse(
+            "boards:column_reorder",
+            args=[context["workspace"].slug, context["project"].pk],
+        ),
+        reverse(
+            "boards:column_shift",
+            args=[context["workspace"].slug, context["project"].pk, column.pk],
+        ),
+        reverse(
+            "boards:task_move",
+            args=[context["workspace"].slug, context["project"].pk, task.pk],
+        ),
+        reverse(
+            "boards:task_nudge",
+            args=[context["workspace"].slug, context["project"].pk, task.pk],
+        ),
+    ]
+    for url in post_only_urls:
+        assert client.get(url).status_code == 405
+        assert client.put(url).status_code == 405
+        assert client.head(url).status_code == 405
+        assert client.options(url).status_code == 405
 
 
 def test_only_manager_can_create_column(client, context):
@@ -230,6 +294,25 @@ def test_archived_project_is_read_only(client, context):
         content_type="application/json",
     )
     assert response.status_code == 400
+
+
+def test_archived_task_create_scopes_column_before_read_only_redirect(client, context):
+    other_project = Project.objects.create(
+        workspace=context["workspace"],
+        name="Other project",
+        creator=context["owner"],
+    )
+    context["project"].status = Project.Status.ARCHIVED
+    context["project"].save(update_fields=["status"])
+    client.force_login(context["member"])
+
+    for column_id in [999999, other_project.board.columns.first().pk]:
+        url = reverse(
+            "boards:task_create",
+            args=[context["workspace"].slug, context["project"].pk, column_id],
+        )
+        assert client.get(url).status_code == 404
+        assert client.post(url, {"title": "Blocked"}).status_code == 404
 
 
 def test_move_requires_post_and_csrf(context):

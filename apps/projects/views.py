@@ -14,7 +14,7 @@ from .services import create_project, set_project_archived, update_project
 
 class ProjectListView(WorkspaceAccessMixin, TemplateView):
     template_name = "projects/project_list.html"
-    http_method_names = ["get", "head", "options"]
+    http_method_names = ["get", "head"]
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -27,7 +27,7 @@ class ProjectListView(WorkspaceAccessMixin, TemplateView):
 class ProjectDetailView(ProjectAccessMixin, DetailView):
     template_name = "projects/project_detail.html"
     context_object_name = "project"
-    http_method_names = ["get", "head", "options"]
+    http_method_names = ["get", "head"]
 
     def get_object(self, queryset=None):
         return self.project
@@ -36,6 +36,7 @@ class ProjectDetailView(ProjectAccessMixin, DetailView):
 class ProjectCreateView(WorkspaceManagerRequiredMixin, FormView):
     template_name = "projects/project_form.html"
     form_class = ProjectForm
+    http_method_names = ["get", "post"]
 
     def form_valid(self, form):
         project = create_project(
@@ -56,6 +57,7 @@ class ProjectEditView(ProjectManagerRequiredMixin, UpdateView):
     template_name = "projects/project_form.html"
     form_class = ProjectForm
     context_object_name = "project"
+    http_method_names = ["get", "post"]
 
     def get_object(self, queryset=None):
         return self.project
@@ -90,7 +92,7 @@ class ProjectEditView(ProjectManagerRequiredMixin, UpdateView):
 
 class ProjectArchiveView(ProjectManagerRequiredMixin, View):
     template_name = "projects/project_archive_confirm.html"
-    http_method_names = ["get", "post", "head", "options"]
+    http_method_names = ["get", "post"]
 
     def get(self, request, *args, **kwargs):
         return render(
@@ -110,7 +112,7 @@ class ProjectArchiveView(ProjectManagerRequiredMixin, View):
 
 
 class ProjectRestoreView(ProjectManagerRequiredMixin, View):
-    http_method_names = ["post", "options"]
+    http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
         set_project_archived(project=self.project, actor=self.membership, archived=False)
