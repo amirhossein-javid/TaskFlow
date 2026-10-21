@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}برد {{ project.name }} | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="kanban-page">
+    <div class="page-width kanban-heading">
+        <div>
+            <a class="back-link kanban-back" href="{% url 'projects:detail' workspace.slug project.pk %}">→ {{ workspace.name }} / {{ project.name }}</a>
+            <div class="kanban-title-row">
+                <h1>برد کانبان</h1>
+                <span class="project-status{% if project.status == 'active' %} project-status-active{% endif %}">{{ project.get_status_display }}</span>
+            </div>
+            <p>جریان کار تیم را از شروع تا پایان در یک نما دنبال کنید.</p>
+        </div>
+        {% if is_manager and project.status == 'active' %}
+            <details class="column-create-menu">
+                <summary class="button button-secondary">افزودن ستون</summary>
+                <form class="dropdown column-create-form" method="post" action="{% url 'boards:column_create' workspace.slug project.pk %}">
+                    {% csrf_token %}
+                    <label for="{{ column_form.name.id_for_label }}">نام ستون</label>
+                    {{ column_form.name }}
+                    <button class="button button-small" type="submit">ساخت ستون</button>
+                </form>
+            </details>
+        {% endif %}
+    </div>
+
+    {% if project.status == 'archived' %}
+        <div class="page-width archived-board-notice" role="note">
+            این پروژه بایگانی شده است؛ برد و وظیفه‌ها فقط قابل مشاهده‌اند.
+        </div>
+    {% endif %}
+
+    <div class="kanban-status page-width" data-kanban-status aria-live="polite"></div>
+    <div class="kanban-scroll" data-kanban-board>
+        <div class="kanban-board" role="region" aria-label="ستون‌های برد {{ project.name }}">
+            {% for column in columns %}
+                <section class="kanban-column" data-column-id="{{ column.pk }}">
+                    <header class="kanban-column-header">
+                        <div>
+                            <h2>{{ column.name }}</h2>
+                            <span class="task-count" aria-label="{{ column.tasks.count }} وظیفه">{{ column.tasks.count }}</span>
+                        </div>
+                        {% if is_manager and project.status == 'active' %}
+                            <details class="column-menu">
+                                <summary class="icon-button" aria-label="مدیریت ستون {{ column.name }}">•••</summary>
+                                <div class="dropdown column-dropdown">
+                                    <form method="post" action="{% url 'boards:column_rename' workspace.slug project.pk column.pk %}">
+                                        {% csrf_token %}
+                                        <label for="column-name-{{ column.pk }}">تغییر نام</label>
+                                        <input id="column-name-{{ column.pk }}" name="name" value="{{ column.name }}" maxlength="100" required>
+                                        <button class="button button-small" type="submit">ذخیره</button>
+                                    </form>
+                                    <div class="column-order-actions" aria-label="تغییر ترتیب ستون">
+                                        <form method="post" action="{% url 'boards:column_shift' workspace.slug project.pk column.pk %}">{% csrf_token %}<button class="button button-ghost button-small" name="direction" value="up" type="submit">قبلی</button></form>
+                                        <form method="post" action="{% url 'boards:column_shift' workspace.slug project.pk column.pk %}">{% csrf_token %}<button class="button button-ghost button-small" name="direction" value="down" type="submit">بعدی</button></form>
+                                    </div>
+                                    <a class="danger-text" href="{% url 'boards:column_delete' workspace.slug project.pk column.pk %}">حذف ستون</a>
+                                </div>
+                            </details>
+                        {% endif %}
+                    </header>
+
+                    <div class="task-list" data-task-list data-column-id="{{ column.pk }}">
+                        {% for task in column.tasks.all %}
+                            <article class="task-card priority-{{ task.priority }}"
+                                     data-task-id="{{ task.pk }}"
+                                     data-move-url="{% url 'boards:task_move' workspace.slug project.pk task.pk %}"
+                                     {% if project.status == 'active' %}draggable="true"{% endif %}>
+                                <a class="task-card-main" href="{% url 'boards:task_detail' workspace.slug project.pk task.pk %}">
+                                    <span class="priority-label">{{ task.get_priority_display }}</span>
+                                    <h3>{{ task.title }}</h3>
+                                    {% if task.description %}<p>{{ task.description|truncatechars:90 }}</p>{% endif %}
+                                    <footer>
+                                        {% if task.assignee %}<span class="task-assignee" title="{{ task.assignee.email }}">{{ task.assignee.profile.full_name|default:task.assignee.email|truncatechars:24 }}</span>{% else %}<span class="task-assignee muted">بدون مسئول</span>{% endif %}
+                                        {% if task.due_date %}<time datetime="{{ task.due_date|date:'Y-m-d' }}">{{ task.due_date|date:"Y/m/d" }}</time>{% endif %}
+                                    </footer>
+                                </a>
+                                {% if project.status == 'active' %}
+                                    <form class="task-nudge" method="post" action="{% url 'boards:task_nudge' workspace.slug project.pk task.pk %}" aria-label="جابه‌جایی {{ task.title }}">
+                                        {% csrf_token %}
+                                        <button type="submit" name="direction" value="previous" title="ستون قبلی" aria-label="انتقال به ستون قبلی">→</button>
+                                        <button type="submit" name="direction" value="up" title="بالاتر" aria-label="انتقال به بالاتر">↑</button>
+                                        <button type="submit" name="direction" value="down" title="پایین‌تر" aria-label="انتقال به پایین‌تر">↓</button>
+                                        <button type="submit" name="direction" value="next" title="ستون بعدی" aria-label="انتقال به ستون بعدی">←</button>
+                                    </form>
+                                {% endif %}
+                            </article>
+                        {% empty %}
+                            <div class="column-empty" data-empty-state>هنوز وظیفه‌ای در این ستون نیست.</div>
+                        {% endfor %}
+                    </div>
+
+                    {% if project.status == 'active' %}
+                        <a class="add-task-link" href="{% url 'boards:task_create' workspace.slug project.pk column.pk %}">＋ افزودن وظیفه</a>
+                    {% endif %}
+                </section>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if project.status == 'active' %}<script src="{% static 'js/kanban.js' %}" defer></script>{% endif %}
+{% endblock %}

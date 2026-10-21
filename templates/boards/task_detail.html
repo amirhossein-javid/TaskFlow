@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}{{ task.title }} | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="workspace-page page-width">
+    <a class="back-link" href="{% url 'boards:detail' workspace.slug project.pk %}">→ بازگشت به برد</a>
+    <article class="project-detail-card task-detail-card">
+        <div class="project-detail-heading">
+            <div>
+                <p class="eyebrow">{{ project.name }} · {{ task.column.name }}</p>
+                <span class="priority-label priority-{{ task.priority }}">اولویت {{ task.get_priority_display }}</span>
+                <h1>{{ task.title }}</h1>
+            </div>
+            {% if project.status == 'active' %}
+                <div class="form-actions">
+                    <a class="button button-secondary" href="{% url 'boards:task_edit' workspace.slug project.pk task.pk %}">ویرایش</a>
+                    <a class="button button-ghost danger-text" href="{% url 'boards:task_delete' workspace.slug project.pk task.pk %}">حذف</a>
+                </div>
+            {% endif %}
+        </div>
+        <div class="project-description">
+            {% if task.description %}{{ task.description|linebreaks }}{% else %}<p class="muted">برای این وظیفه توضیحی ثبت نشده است.</p>{% endif %}
+        </div>
+        <dl class="project-meta task-meta">
+            <div><dt>مسئول</dt><dd>{{ task.assignee.profile.full_name|default:task.assignee.email|default:"تعیین نشده" }}</dd></div>
+            <div><dt>سررسید</dt><dd>{{ task.due_date|date:"Y/m/d"|default:"تعیین نشده" }}</dd></div>
+            <div><dt>سازنده</dt><dd>{{ task.creator.profile.full_name|default:task.creator.email|default:"کاربر حذف‌شده" }}</dd></div>
+            <div><dt>آخرین تغییر</dt><dd>{{ task.updated_at|date:"Y/m/d H:i" }}</dd></div>
+        </dl>
+    </article>
+</section>
+{% endblock %}

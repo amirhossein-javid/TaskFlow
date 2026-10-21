@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}حذف وظیفه | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="status-page page-width">
+    <article class="card status-card confirmation-card">
+        <div class="error-mark" aria-hidden="true"><span>×</span></div>
+        <h1>حذف «{{ task.title }}»؟</h1>
+        <p>این کار قابل بازگشت نیست و وظیفه برای همیشه حذف می‌شود.</p>
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-actions form-actions-center">
+                <button class="button button-danger" type="submit">حذف وظیفه</button>
+                <a class="button button-ghost" href="{% url 'boards:task_detail' workspace.slug project.pk task.pk %}">انصراف</a>
+            </div>
+        </form>
+    </article>
+</section>
+{% endblock %}

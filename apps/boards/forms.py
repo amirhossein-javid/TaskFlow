@@ -40,6 +40,9 @@ class TaskForm(forms.ModelForm):
             is_active=True,
         ).select_related("profile")
         self.fields["assignee"].empty_label = "بدون مسئول"
+        self.fields["assignee"].error_messages["invalid_choice"] = (
+            "کاربر انتخاب‌شده عضو این فضای کاری نیست."
+        )
 
     def clean_title(self):
         title = self.cleaned_data["title"].strip()
