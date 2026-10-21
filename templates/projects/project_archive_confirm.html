@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+
+{% block title %}بایگانی {{ project.name }} | TaskFlow{% endblock %}
+
+{% block content %}<section class="form-page page-width"><div class="form-card confirmation-card"><div class="card-heading"><p class="eyebrow">{{ workspace.name }}</p><h1>بایگانی پروژه</h1><p>پروژهٔ «{{ project.name }}» پس از بایگانی قابل مشاهده می‌ماند، اما تا زمان بازیابی ویرایش نمی‌شود.</p></div><form method="post">{% csrf_token %}<div class="form-actions"><button class="button button-danger" type="submit">بایگانی پروژه</button><a class="button button-ghost" href="{% url 'projects:detail' workspace.slug project.pk %}">انصراف</a></div></form></div></section>{% endblock %}

@@ -6,6 +6,7 @@
     </div>
     <nav class="workspace-tabs" aria-label="بخش‌های فضای کاری">
         <a href="{% url 'workspaces:detail' workspace.slug %}">نمای کلی</a>
+        <a href="{% url 'projects:list' workspace.slug %}">پروژه‌ها</a>
         <a href="{% url 'workspaces:members' workspace.slug %}">اعضا</a>
         {% if membership.role == 'owner' %}
             <a href="{% url 'workspaces:settings' workspace.slug %}">تنظیمات</a>
