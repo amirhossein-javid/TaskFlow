@@ -7,6 +7,7 @@ class BoardColumnInline(admin.TabularInline):
     model = BoardColumn
     extra = 0
     ordering = ("position",)
+    can_delete = False
 
 
 @admin.register(Board)
@@ -14,6 +15,9 @@ class BoardAdmin(admin.ModelAdmin):
     list_display = ("project", "created_at")
     search_fields = ("project__name", "project__workspace__name")
     inlines = (BoardColumnInline,)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Task)

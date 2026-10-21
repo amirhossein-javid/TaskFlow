@@ -2,7 +2,7 @@ import pytest
 from django.db import IntegrityError, transaction
 
 from apps.accounts.models import User
-from apps.boards.models import Board, BoardColumn
+from apps.boards.models import Board, BoardColumn, Task
 from apps.boards.signals import DEFAULT_COLUMN_NAMES
 from apps.projects.models import Project
 from apps.workspaces.services import create_workspace
@@ -41,3 +41,19 @@ def test_project_deletion_cascades_to_board_and_columns(project):
 
     assert not Board.objects.filter(pk=board_id).exists()
     assert not BoardColumn.objects.filter(board_id=board_id).exists()
+
+
+def test_workspace_deletion_cascades_through_project_board_and_tasks(project):
+    column = project.board.columns.first()
+    task = Task.objects.create(
+        column=column,
+        title="Task",
+        priority=Task.Priority.MEDIUM,
+        creator=project.creator,
+        position=0,
+    )
+
+    project.workspace.delete()
+
+    assert not Task.objects.filter(pk=task.pk).exists()
+    assert not Board.objects.filter(project_id=project.pk).exists()

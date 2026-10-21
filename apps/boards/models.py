@@ -63,7 +63,7 @@ class Task(models.Model):
 
     column = models.ForeignKey(
         BoardColumn,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="tasks",
         verbose_name=_("ستون"),
     )
