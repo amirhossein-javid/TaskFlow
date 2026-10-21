@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}حذف {{ workspace.name }} | TaskFlow{% endblock %}
+{% block content %}<section class="form-page page-width"><div class="form-card confirmation-card"><div class="card-heading"><p class="eyebrow danger-text">عملیات بازگشت‌ناپذیر</p><h1>حذف فضای کاری</h1><p>برای تأیید، نام «{{ workspace.name }}» را دقیقاً وارد کنید.</p></div><form method="post" novalidate>{% csrf_token %}{% include "accounts/_form.html" %}<div class="form-actions"><button class="button button-danger" type="submit">حذف برای همیشه</button><a class="button button-ghost" href="{% url 'workspaces:settings' workspace.slug %}">انصراف</a></div></form></div></section>{% endblock %}

@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "apps.accounts.apps.AccountsConfig",
+    "apps.workspaces.apps.WorkspacesConfig",
 ]
 
 MIDDLEWARE = [
@@ -55,6 +56,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "apps.workspaces.context_processors.workspace_navigation",
             ],
         },
     },
@@ -86,6 +88,8 @@ AUTH_USER_MODEL = "accounts.User"
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "accounts:profile"
 LOGOUT_REDIRECT_URL = "home"
+
+WORKSPACE_INVITATION_EXPIRY_DAYS = int(env("WORKSPACE_INVITATION_EXPIRY_DAYS", "7"))
 
 EMAIL_BACKEND = env(
     "DJANGO_EMAIL_BACKEND",

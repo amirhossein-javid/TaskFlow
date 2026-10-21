@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}اعضای {{ workspace.name }} | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="workspace-page page-width">
+    {% include "workspaces/_header.html" %}
+    <div class="section-heading-row"><div><h2>اعضای تیم</h2><p>نقش‌ها و دسترسی اعضای این فضا را ببینید.</p></div>{% if membership.role == 'owner' or membership.role == 'admin' %}<a class="button" href="{% url 'workspaces:invite' workspace.slug %}">دعوت عضو</a>{% endif %}</div>
+    <div class="member-list">
+        {% for item in members %}
+            <article class="member-row">
+                <span class="member-avatar" aria-hidden="true">{{ item.user.profile.full_name|default:item.user.email|first }}</span>
+                <div class="member-identity"><strong>{{ item.user.profile.full_name|default:"بدون نام" }}</strong><span dir="ltr">{{ item.user.email }}</span></div>
+                {% if membership.role == 'owner' %}
+                    <form class="role-form" method="post" action="{% url 'workspaces:change_role' workspace.slug item.pk %}">
+                        {% csrf_token %}<label class="sr-only" for="role-{{ item.pk }}">نقش {{ item.user.email }}</label>
+                        <select id="role-{{ item.pk }}" name="role"><option value="owner"{% if item.role == 'owner' %} selected{% endif %}>مالک</option><option value="admin"{% if item.role == 'admin' %} selected{% endif %}>مدیر</option><option value="member"{% if item.role == 'member' %} selected{% endif %}>عضو</option></select>
+                        <button class="button button-ghost button-small" type="submit">ذخیره</button>
+                    </form>
+                {% else %}<span class="role-badge">{{ item.get_role_display }}</span>{% endif %}
+                {% if item.pk != membership.pk %}
+                    {% if membership.role == 'owner' or membership.role == 'admin' and item.role == 'member' %}<a class="danger-action" href="{% url 'workspaces:remove_member' workspace.slug item.pk %}">حذف</a>{% endif %}
+                {% endif %}
+            </article>
+        {% endfor %}
+    </div>
+    {% if membership.role == 'owner' or membership.role == 'admin' %}
+        <div class="pending-section"><h2>دعوت‌های در انتظار</h2>{% for invitation in pending_invitations %}{% if invitation.is_pending %}<div class="pending-row"><span dir="ltr">{{ invitation.email }}</span><span class="role-badge">{{ invitation.get_role_display }}</span><small>تا {{ invitation.expires_at|date:"Y/m/d H:i" }}</small></div>{% endif %}{% empty %}<p class="muted">دعوت فعالی وجود ندارد.</p>{% endfor %}</div>
+    {% endif %}
+</section>
+{% endblock %}

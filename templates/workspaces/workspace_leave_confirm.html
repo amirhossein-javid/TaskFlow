@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}ترک فضای کاری | TaskFlow{% endblock %}
+{% block content %}<section class="form-page page-width"><div class="form-card confirmation-card"><div class="card-heading"><h1>ترک فضای کاری</h1><p>پس از خروج از «{{ workspace.name }}» دیگر به اطلاعات آن دسترسی ندارید.</p></div><form method="post">{% csrf_token %}<div class="form-actions"><button class="button button-danger" type="submit">ترک فضای کاری</button><a class="button button-ghost" href="{% url 'workspaces:detail' workspace.slug %}">انصراف</a></div></form></div></section>{% endblock %}

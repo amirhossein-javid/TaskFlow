@@ -1,6 +1,6 @@
 # TaskFlow
 
-TaskFlow is a team task management application built with Django 5.2 and PostgreSQL. Phase 1 provides email-based authentication, password management, and user profiles.
+TaskFlow is a team task management application built with Django 5.2 and PostgreSQL. It currently provides email-based authentication, user profiles, and workspace membership management.
 
 ## Requirements
 
@@ -92,6 +92,18 @@ Production email delivery uses Django's SMTP backend by default. Configure these
 Set `DJANGO_EMAIL_BACKEND` only when a different Django email backend is required.
 
 Standard Django user-creation paths automatically create the related Profile. Django does not emit model signals for `bulk_create()`, so callers that use it must create the corresponding profiles explicitly in bulk.
+
+## Workspaces and invitations
+
+Authenticated users can create multiple workspaces under `/workspaces/`. Workspace access is controlled by Owner, Admin, and Member roles. Owners manage roles and workspace settings, while Owners and Admins can invite and remove eligible members.
+
+Invitation links are single-use, expire after seven days by default, and can only be accepted by a signed-in account with the invited email address. Set `WORKSPACE_INVITATION_EXPIRY_DAYS` to change the lifetime. Email delivery reuses the `DJANGO_EMAIL_*` configuration described above; development writes invitations to the console.
+
+Apply the workspace schema migration after updating:
+
+```powershell
+docker compose run --rm web python manage.py migrate
+```
 
 ## Language conventions
 

@@ -71,6 +71,22 @@
 
                     <div class="nav-links">
                         {% if user.is_authenticated %}
+                            <a class="nav-link" href="{% url 'workspaces:list' %}">فضاهای کاری</a>
+                            {% if navigation_memberships %}
+                                <details class="workspace-switcher">
+                                    <summary class="nav-link">
+                                        {% if active_workspace_slug %}تغییر فضا{% else %}انتخاب فضا{% endif %}
+                                    </summary>
+                                    <div class="dropdown workspace-dropdown">
+                                        {% for nav_membership in navigation_memberships %}
+                                            <a href="{% url 'workspaces:detail' nav_membership.workspace.slug %}"
+                                               {% if nav_membership.workspace.slug == active_workspace_slug %}aria-current="page"{% endif %}>
+                                                {{ nav_membership.workspace.name }}
+                                            </a>
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                            {% endif %}
                             <a class="nav-link" href="{% url 'accounts:profile' %}">پروفایل</a>
                             <a class="nav-link nav-link-secondary" href="{% url 'accounts:password_change' %}">امنیت</a>
                             <form method="post" action="{% url 'accounts:logout' %}">

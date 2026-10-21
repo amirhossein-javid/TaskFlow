@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.staticfiles import finders
 
 from apps.accounts.models import Profile
+from config.settings import base as base_settings
 
 
 def test_home_page_uses_persian_rtl_layout(client):
@@ -29,8 +30,11 @@ def test_theme_bootstrap_precedes_stylesheet_and_exposes_all_preferences(client)
 
 def test_frontend_assets_and_whitenoise_configuration():
     assert settings.MIDDLEWARE[1] == "whitenoise.middleware.WhiteNoiseMiddleware"
-    assert settings.STORAGES["staticfiles"]["BACKEND"] == (
+    assert base_settings.STORAGES["staticfiles"]["BACKEND"] == (
         "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    )
+    assert settings.STORAGES["staticfiles"]["BACKEND"] == (
+        "django.contrib.staticfiles.storage.StaticFilesStorage"
     )
     for asset in (
         "css/main.css",
