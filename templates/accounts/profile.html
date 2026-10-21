@@ -3,25 +3,47 @@
 {% block title %}پروفایل | TaskFlow{% endblock %}
 
 {% block content %}
-<section class="profile-card">
-    <div class="profile-heading">
-        <div class="avatar-preview">
-            {% if object.avatar %}
-                <img src="{{ object.avatar.url }}" alt="تصویر پروفایل {{ object.full_name }}">
-            {% else %}
-                <span aria-hidden="true">{{ user.email|first|upper }}</span>
-            {% endif %}
+<div class="settings-layout page-width">
+    <aside class="settings-sidebar">
+        <div class="profile-summary">
+            <div class="avatar-preview">
+                {% if object.avatar %}
+                    <img src="{{ object.avatar.url }}" alt="تصویر پروفایل {{ object.full_name }}">
+                {% else %}
+                    <span aria-hidden="true">{{ user.email|first|upper }}</span>
+                {% endif %}
+                <span class="avatar-status" aria-label="حساب فعال"></span>
+            </div>
+            <div>
+                <h1>{{ object.full_name|default:"پروفایل شما" }}</h1>
+                <p class="technical-identifier" dir="ltr">{{ user.email }}</p>
+            </div>
         </div>
-        <div>
-            <p class="eyebrow">حساب کاربری</p>
-            <h1>{{ object.full_name|default:"پروفایل شما" }}</h1>
-            <p class="muted" dir="ltr">{{ user.email }}</p>
+        <nav class="settings-nav" aria-label="تنظیمات حساب">
+            <a class="is-active" href="{% url 'accounts:profile' %}" aria-current="page">
+                <span aria-hidden="true">◉</span> اطلاعات پروفایل
+            </a>
+            <a href="{% url 'accounts:password_change' %}">
+                <span aria-hidden="true">◇</span> رمز عبور و امنیت
+            </a>
+        </nav>
+        <div class="account-note"><span aria-hidden="true">✦</span><p>اطلاعات پروفایل شما برای همکاری بهتر با اعضای تیم نمایش داده می‌شود.</p></div>
+    </aside>
+
+    <section class="settings-card">
+        <div class="card-heading card-heading-row">
+            <div><p class="eyebrow">تنظیمات حساب</p><h2>اطلاعات پروفایل</h2><p>نام، معرفی کوتاه و تصویر خود را به‌روز کنید.</p></div>
+            <span class="section-icon" aria-hidden="true">✎</span>
         </div>
-    </div>
-    <form method="post" enctype="multipart/form-data" novalidate>
-        {% csrf_token %}
-        {% include "accounts/_form.html" %}
-        <button class="button" type="submit">ذخیرهٔ تغییرات</button>
-    </form>
-</section>
+        <div class="card-divider"></div>
+        <form method="post" enctype="multipart/form-data" novalidate>
+            {% csrf_token %}
+            {% include "accounts/_form.html" %}
+            <div class="form-actions">
+                <button class="button" type="submit">ذخیرهٔ تغییرات</button>
+                <a class="button button-ghost" href="{% url 'home' %}">انصراف</a>
+            </div>
+        </form>
+    </section>
+</div>
 {% endblock %}

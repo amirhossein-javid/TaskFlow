@@ -1,11 +1,19 @@
 {% if form.non_field_errors %}
-    <div class="form-errors" role="alert">{{ form.non_field_errors }}</div>
+    <div class="form-errors" role="alert">
+        <span class="form-error-icon" aria-hidden="true">!</span>
+        <div>{{ form.non_field_errors }}</div>
+    </div>
 {% endif %}
 
 {% for field in form %}
     <div class="form-group{% if field.errors %} has-error{% endif %}">
-        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-        {{ field }}
+        <div class="field-heading">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {% if not field.field.required %}<span class="optional-label">اختیاری</span>{% endif %}
+        </div>
+        <div class="field-control">
+            {{ field }}
+        </div>
         {% if field.help_text %}
             <div class="help-text" id="{{ field.auto_id }}_helptext">{{ field.help_text|safe }}</div>
         {% endif %}

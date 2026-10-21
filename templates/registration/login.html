@@ -3,18 +3,32 @@
 {% block title %}ورود | TaskFlow{% endblock %}
 
 {% block content %}
-<section class="auth-card">
-    <p class="eyebrow">خوش آمدید</p>
-    <h1>ورود به حساب</h1>
-    <form method="post" novalidate>
-        {% csrf_token %}
-        {% include "accounts/_form.html" %}
-        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-        <button class="button button-block" type="submit">ورود</button>
-    </form>
-    <div class="auth-footer">
-        <a href="{% url 'accounts:password_reset' %}">رمز عبور را فراموش کرده‌اید؟</a>
-        <span>حساب ندارید؟ <a href="{% url 'accounts:register' %}">ثبت‌نام کنید</a>.</span>
-    </div>
-</section>
+<div class="auth-layout page-width auth-layout-login">
+    <aside class="auth-aside" aria-label="دربارهٔ TaskFlow">
+        <div class="auth-aside-content">
+            <a class="mini-brand" href="{% url 'home' %}"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>TaskFlow</a>
+            <p class="eyebrow">دوباره خوش آمدید</p>
+            <h1>همان‌جا که بودید، ادامه دهید.</h1>
+            <p>فضای متمرکز تیم شما آماده است تا کارها دوباره جریان پیدا کنند.</p>
+            <div class="quote-card"><span aria-hidden="true">“</span><p>شفافیت، بهترین نقطهٔ شروع برای یک همکاری عالی است.</p></div>
+        </div>
+        <div class="auth-orb auth-orb-one" aria-hidden="true"></div>
+        <div class="auth-orb auth-orb-two" aria-hidden="true"></div>
+    </aside>
+    <section class="auth-card">
+        <div class="card-heading">
+            <p class="eyebrow">ورود به فضای کاری</p>
+            <h2>ورود به حساب</h2>
+            <p>ایمیل و رمز عبور خود را وارد کنید.</p>
+        </div>
+        <form method="post" novalidate>
+            {% csrf_token %}
+            {% include "accounts/_form.html" %}
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+            <div class="form-meta"><a href="{% url 'accounts:password_reset' %}">رمز عبور را فراموش کرده‌اید؟</a></div>
+            <button class="button button-block button-large" type="submit">ورود به TaskFlow <span aria-hidden="true">←</span></button>
+        </form>
+        <p class="auth-footer">هنوز حساب ندارید؟ <a href="{% url 'accounts:register' %}">حساب رایگان بسازید</a></p>
+    </section>
+</div>
 {% endblock %}

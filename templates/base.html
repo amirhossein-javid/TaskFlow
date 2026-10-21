@@ -4,37 +4,107 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f7f7fb">
+    <script>
+        (() => {
+            const key = "taskflow-theme";
+            let preference = "system";
+            try {
+                preference = localStorage.getItem(key) || "system";
+            } catch (error) {
+                preference = "system";
+            }
+            const dark = preference === "dark" ||
+                (preference === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+            document.documentElement.dataset.theme = dark ? "dark" : "light";
+            document.documentElement.dataset.themePreference = preference;
+            document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        })();
+    </script>
     <title>{% block title %}TaskFlow{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    <script src="{% static 'js/theme.js' %}" defer></script>
 </head>
 <body>
-    <header class="site-header">
-        <nav class="nav container-wide" aria-label="ناوبری اصلی">
-            <a class="brand" href="{% url 'home' %}">TaskFlow</a>
-            <div class="nav-links">
-                {% if user.is_authenticated %}
-                    <a href="{% url 'accounts:profile' %}">پروفایل</a>
-                    <a href="{% url 'accounts:password_change' %}">تغییر رمز عبور</a>
-                    <form method="post" action="{% url 'accounts:logout' %}">
-                        {% csrf_token %}
-                        <button class="link-button" type="submit">خروج</button>
-                    </form>
-                {% else %}
-                    <a href="{% url 'accounts:login' %}">ورود</a>
-                    <a class="button button-small" href="{% url 'accounts:register' %}">ساخت حساب</a>
-                {% endif %}
-            </div>
-        </nav>
-    </header>
-    <main class="container">
-        {% if messages %}
-            <div class="messages" aria-live="polite">
-                {% for message in messages %}
-                    <div class="message message-{{ message.tags|default:'info' }}">{{ message }}</div>
-                {% endfor %}
-            </div>
-        {% endif %}
-        {% block content %}{% endblock %}
-    </main>
+    <a class="skip-link" href="#main-content">رفتن به محتوای اصلی</a>
+    <div class="site-shell">
+        <header class="site-header">
+            <nav class="nav page-width" aria-label="ناوبری اصلی">
+                <a class="brand" href="{% url 'home' %}" aria-label="TaskFlow، صفحهٔ اصلی">
+                    <span class="brand-mark" aria-hidden="true">
+                        <span></span><span></span><span></span>
+                    </span>
+                    <span class="brand-name">TaskFlow</span>
+                </a>
+
+                <div class="nav-actions">
+                    <details class="theme-menu" data-theme-menu>
+                        <summary class="icon-button" aria-label="انتخاب پوسته" title="انتخاب پوسته">
+                            <svg class="theme-icon theme-icon-light" aria-hidden="true" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="3.5"></circle>
+                                <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"></path>
+                            </svg>
+                            <svg class="theme-icon theme-icon-dark" aria-hidden="true" viewBox="0 0 24 24">
+                                <path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z"></path>
+                            </svg>
+                            <span class="sr-only">پوستهٔ فعلی: <span data-theme-label>سیستم</span></span>
+                        </summary>
+                        <div class="dropdown theme-dropdown" role="group" aria-label="انتخاب پوسته">
+                            <p class="dropdown-label">نمایش</p>
+                            <button type="button" data-theme-value="light" aria-label="پوستهٔ روشن">
+                                <span class="theme-choice-icon" aria-hidden="true">☀</span>
+                                <span>روشن</span>
+                                <span class="choice-check" aria-hidden="true">✓</span>
+                            </button>
+                            <button type="button" data-theme-value="dark" aria-label="پوستهٔ تاریک">
+                                <span class="theme-choice-icon" aria-hidden="true">◐</span>
+                                <span>تاریک</span>
+                                <span class="choice-check" aria-hidden="true">✓</span>
+                            </button>
+                            <button type="button" data-theme-value="system" aria-label="پوستهٔ سیستم">
+                                <span class="theme-choice-icon" aria-hidden="true">◫</span>
+                                <span>سیستم</span>
+                                <span class="choice-check" aria-hidden="true">✓</span>
+                            </button>
+                        </div>
+                    </details>
+
+                    <div class="nav-links">
+                        {% if user.is_authenticated %}
+                            <a class="nav-link" href="{% url 'accounts:profile' %}">پروفایل</a>
+                            <a class="nav-link nav-link-secondary" href="{% url 'accounts:password_change' %}">امنیت</a>
+                            <form method="post" action="{% url 'accounts:logout' %}">
+                                {% csrf_token %}
+                                <button class="button button-ghost button-small" type="submit">خروج</button>
+                            </form>
+                        {% else %}
+                            <a class="nav-link" href="{% url 'accounts:login' %}">ورود</a>
+                            <a class="button button-small" href="{% url 'accounts:register' %}">ساخت حساب</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </nav>
+        </header>
+
+        <main class="main-content" id="main-content" tabindex="-1">
+            {% if messages %}
+                <div class="messages page-width" aria-live="polite">
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags|default:'info' }}" role="status">
+                            <span class="alert-indicator" aria-hidden="true"></span>
+                            <span>{{ message }}</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer class="site-footer page-width">
+            <span>TaskFlow</span>
+            <span class="footer-dot" aria-hidden="true"></span>
+            <span>ساخته‌شده برای کار تیمی شفاف‌تر</span>
+        </footer>
+    </div>
 </body>
 </html>
