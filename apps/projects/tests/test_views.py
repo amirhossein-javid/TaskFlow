@@ -34,6 +34,20 @@ def test_project_pages_require_authentication(client):
     assert reverse("accounts:login") in response.url
 
 
+def test_read_only_project_pages_reject_post_and_accept_head(client):
+    workspace, owner, *_ = setup_workspace()
+    project = Project.objects.create(workspace=workspace, name="Launch", creator=owner)
+    client.force_login(owner)
+    urls = [
+        reverse("projects:list", args=[workspace.slug]),
+        reverse("projects:detail", args=[workspace.slug, project.pk]),
+    ]
+
+    for url in urls:
+        assert client.head(url).status_code == 200
+        assert client.post(url).status_code == 405
+
+
 @pytest.mark.parametrize("user_index", [1, 2])
 def test_owner_and_admin_can_create_projects(client, user_index):
     workspace, owner, admin, *_ = setup_workspace()

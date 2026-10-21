@@ -1,14 +1,21 @@
 from django.urls import path
 
-from . import views
+from .views import (
+    ProjectArchiveView,
+    ProjectCreateView,
+    ProjectDetailView,
+    ProjectEditView,
+    ProjectListView,
+    ProjectRestoreView,
+)
 
 app_name = "projects"
 
 urlpatterns = [
-    path("", views.project_list, name="list"),
-    path("new/", views.project_create, name="create"),
-    path("<int:project_id>/", views.project_detail, name="detail"),
-    path("<int:project_id>/edit/", views.project_edit, name="edit"),
-    path("<int:project_id>/archive/", views.project_archive, name="archive"),
-    path("<int:project_id>/restore/", views.project_restore, name="restore"),
+    path("", ProjectListView.as_view(), name="list"),
+    path("new/", ProjectCreateView.as_view(), name="create"),
+    path("<int:project_id>/", ProjectDetailView.as_view(), name="detail"),
+    path("<int:project_id>/edit/", ProjectEditView.as_view(), name="edit"),
+    path("<int:project_id>/archive/", ProjectArchiveView.as_view(), name="archive"),
+    path("<int:project_id>/restore/", ProjectRestoreView.as_view(), name="restore"),
 ]
