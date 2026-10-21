@@ -88,7 +88,6 @@
                                 </details>
                             {% endif %}
                             <a class="nav-link" href="{% url 'accounts:profile' %}">پروفایل</a>
-                            <a class="nav-link nav-link-secondary" href="{% url 'accounts:password_change' %}">امنیت</a>
                             <form method="post" action="{% url 'accounts:logout' %}">
                                 {% csrf_token %}
                                 <button class="button button-ghost button-small" type="submit">خروج</button>
