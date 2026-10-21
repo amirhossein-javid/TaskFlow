@@ -75,6 +75,21 @@ def test_member_can_view_board_and_non_member_gets_404(client, context):
     assert client.get(board_url(context)).status_code == 404
 
 
+def test_read_only_board_pages_accept_head_and_reject_post(client, context):
+    task = make_task(context)
+    task.assignee = context["member"]
+    task.save(update_fields=["assignee"])
+    task_url = reverse(
+        "boards:task_detail",
+        args=[context["workspace"].slug, context["project"].pk, task.pk],
+    )
+    client.force_login(context["member"])
+
+    for url in [board_url(context), task_url]:
+        assert client.head(url).status_code == 200
+        assert client.post(url).status_code == 405
+
+
 def test_only_manager_can_create_column(client, context):
     url = reverse(
         "boards:column_create",
