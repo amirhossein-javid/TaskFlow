@@ -1,6 +1,6 @@
 # TaskFlow
 
-TaskFlow is a team task management application built with Django 5.2, PostgreSQL, Django Templates, and vanilla JavaScript. Features through Phase 7 include email-based authentication, workspaces with role-based access, project Kanban boards, comments and activity history, task search and filtering, project labels, and task checklists. The responsive Persian RTL interface supports light and dark themes.
+TaskFlow is a team task management application built with Django 5.2, PostgreSQL, Django Templates, and vanilla JavaScript. Features through Phase 8 include email-based authentication, workspaces with role-based access, project Kanban boards, comments and activity history, task search and filtering, project labels, task checklists, and in-app notifications. The responsive Persian RTL interface supports light and dark themes.
 
 ## Requirements
 
@@ -67,7 +67,7 @@ Board assignee filters fall back to email if a legacy User unexpectedly lacks a 
 
 ## Run tests
 
-The test suite uses the PostgreSQL service from Docker Compose and enforces at least 85% application coverage. It includes regression tests for permissions, filtering, profile lifecycle, labels, checklists, and concurrent ordering, label assignment/deletion, checklist completion, and profile repair operations:
+The test suite uses the PostgreSQL service from Docker Compose and enforces at least 85% application coverage. It covers permissions, filtering, profile lifecycle, labels, checklists, notifications, and PostgreSQL concurrency scenarios, including reciprocal comments across projects and competing read-state updates:
 
 ```powershell
 docker compose run --rm web sh -c "pip install -r requirements/development.txt && pytest"
@@ -171,6 +171,16 @@ Owners, Admins, and Members can collaboratively create, edit, and delete multipl
 Task activity records explicit label attachment/detachment and checklist or item creation, edits, completion, reopening, and deletion in the same transaction as each change. Repeated requests that leave state unchanged create no activity. Shared-label renames, color changes, and deletion do not generate per-task events, and cascading deletions do not generate extra child events.
 
 Application writes go through scoped services. The database enforces foreign keys, valid colors, nonblank text, and unique label names and task-label pairs. Cross-project assignment is validated by the model and service; direct ORM or SQL writes that bypass services are unsupported. Project label, task-label assignment, checklist, and checklist item Admin interfaces are read-only.
+
+### In-app notifications (Phase 8)
+
+The current assignee receives a notification when another user assigns them a task (including at creation), adds a new comment, or moves the task to a different column. Recipients must be active users with current workspace membership. Self-actions, no-op changes, comment edits, and reordering within a column do not notify. Notifications are recorded in the same transaction as the task change and its activity event, with at most one notification per recipient/activity pair.
+
+The inbox at `/notifications/` shows the newest notifications first, with 20 per page and an unread-only filter. Users can mark individual notifications read or unread, or mark all visible notifications read. These operations use CSRF-protected POST requests and are idempotent; opening the inbox or a task does not mark notifications read. The navigation bell refreshes its unread count when a page loads or is refreshed; there is no polling, live delivery, or notification email.
+
+The inbox, unread count, and read-state operations are scoped to the recipient and current task access. Task links use the existing permission checks. Leaving a workspace hides its notifications; rejoining makes retained notifications accessible again. Archived projects remain readable, including notification read-state controls.
+
+Deleting a task, project, or recipient removes the corresponding notifications. There is no automatic retention policy. Notification Admin is read-only.
 
 ## Language conventions
 

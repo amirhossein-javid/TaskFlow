@@ -69,6 +69,12 @@
                         </div>
                     </details>
 
+                    {% if user.is_authenticated %}
+                        <a class="icon-button notification-bell" href="{% url 'notifications:inbox' %}" aria-label="اعلان‌ها، {{ notification_unread_count }} خوانده‌نشده" title="اعلان‌ها">
+                            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"></path></svg>
+                            {% if notification_unread_count %}<span class="notification-badge" aria-hidden="true">{{ notification_unread_count }}</span>{% endif %}
+                        </a>
+                    {% endif %}
                     <div class="nav-links">
                         {% if user.is_authenticated %}
                             <a class="nav-link" href="{% url 'workspaces:list' %}">فضاهای کاری</a>

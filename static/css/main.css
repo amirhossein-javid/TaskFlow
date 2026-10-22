@@ -1272,3 +1272,20 @@ h3 {
         transition-duration: .01ms !important;
     }
 }
+
+/* In-app notifications */
+.notification-bell { position: relative; flex-shrink: 0; text-decoration: none; }
+.notification-bell svg { width: 1.2rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.notification-badge { position: absolute; inset-block-start: -.45rem; inset-inline-end: -.45rem; min-width: 1.2rem; padding: .1rem .25rem; border-radius: var(--radius-pill); background: var(--bg-inverse); color: var(--text-inverse); font-size: .7rem; line-height: 1.3; text-align: center; }
+.notification-list { display: grid; gap: 1rem; padding: 0; list-style: none; }
+.notification-card { min-width: 0; padding: 1.1rem; border: 1px solid var(--border-subtle); border-inline-start: .25rem solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-elevated); overflow-wrap: anywhere; }
+.notification-card.is-unread { border-inline-start-color: var(--accent-400); }
+.notification-card p { margin-block: 0 .7rem; }
+.notification-card > a { color: var(--text-primary); text-underline-offset: .2em; }
+.notification-card form { margin: 0; }
+
+@media (max-width: 41.99rem) {
+    .nav { flex-wrap: wrap; padding-block: .65rem; }
+    .nav-actions { max-width: 100%; flex-wrap: wrap; justify-content: flex-end; }
+    .nav-links { flex-wrap: wrap; }
+}
