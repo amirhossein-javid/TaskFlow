@@ -3,7 +3,30 @@ from django.db.models import Q
 
 from apps.accounts.models import User
 
-from .models import BoardColumn, Task, TaskComment
+from .models import BoardColumn, ProjectLabel, Task, TaskComment
+
+
+class ProjectLabelForm(forms.ModelForm):
+    class Meta:
+        model = ProjectLabel
+        fields = ("name", "color")
+
+
+class TaskLabelForm(forms.Form):
+    label = forms.ModelChoiceField(
+        label="برچسب",
+        queryset=ProjectLabel.objects.none(),
+        error_messages={"invalid_choice": "برچسب انتخاب‌شده متعلق به این پروژه نیست."},
+    )
+    attached = forms.TypedChoiceField(
+        label="عملیات",
+        choices=[("true", "افزودن"), ("false", "برداشتن")],
+        coerce=lambda value: value == "true",
+    )
+
+    def __init__(self, *args, project, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["label"].queryset = ProjectLabel.objects.filter(project=project)
 
 
 class TaskFilterForm(forms.Form):

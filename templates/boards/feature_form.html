@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }} | TaskFlow{% endblock %}
+{% block content %}
+<section class="workspace-page page-width">
+    <a class="back-link" href="{% url 'boards:detail' workspace.slug project.pk %}">→ بازگشت به برد</a>
+    <div class="collaboration-card task-form-card">
+        <h1>{{ heading }}</h1>
+        <form method="post">
+            {% csrf_token %}
+            {% include "accounts/_form.html" %}
+            <button class="button" type="submit">ذخیره</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

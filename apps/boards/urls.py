@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .label_views import LabelDeleteView, LabelEditView, LabelListView, TaskLabelView
 from .views import (
     BoardDetailView,
     ColumnCreateView,
@@ -21,6 +22,11 @@ from .views import (
 app_name = "boards"
 
 urlpatterns = [
+    path("labels/", LabelListView.as_view(), name="label_list"),
+    path("labels/new/", LabelEditView.as_view(), name="label_create"),
+    path("labels/<int:label_id>/edit/", LabelEditView.as_view(), name="label_edit"),
+    path("labels/<int:label_id>/delete/", LabelDeleteView.as_view(), name="label_delete"),
+    path("tasks/<int:task_id>/labels/", TaskLabelView.as_view(), name="task_label"),
     path("", BoardDetailView.as_view(), name="detail"),
     path("columns/new/", ColumnCreateView.as_view(), name="column_create"),
     path("columns/reorder/", ColumnReorderView.as_view(), name="column_reorder"),

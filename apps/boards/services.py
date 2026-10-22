@@ -5,9 +5,85 @@ from django.db.models import F
 from apps.projects.models import Project
 from apps.workspaces.models import WorkspaceMembership
 
-from .models import Board, BoardColumn, Task, TaskActivity, TaskComment
+from .models import Board, BoardColumn, ProjectLabel, Task, TaskActivity, TaskComment, TaskLabel
 
 POSITION_OFFSET = 1_000_000
+
+
+@transaction.atomic
+def create_project_label(*, board: Board, actor: WorkspaceMembership, name: str, color: str):
+    project, board = _locked_project_board(board_id=board.pk)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    _require_manager(actor)
+    _require_active(project)
+    label = ProjectLabel(project=project, name=name.strip(), color=color)
+    label.full_clean()
+    label.save()
+    return label
+
+
+@transaction.atomic
+def update_project_label(*, label: ProjectLabel, actor: WorkspaceMembership, name: str, color: str):
+    project, board = _locked_project_board(board_id=label.project.board.pk)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    _require_manager(actor)
+    _require_active(project)
+    label = ProjectLabel.objects.select_for_update().filter(pk=label.pk, project=project).first()
+    if label is None:
+        raise ValidationError("برچسب موردنظر پیدا نشد.")
+    if (label.name, label.color) != (name.strip(), color):
+        label.name, label.color = name.strip(), color
+        label.full_clean()
+        label.save(update_fields=["name", "color"])
+    return label
+
+
+@transaction.atomic
+def delete_project_label(*, label: ProjectLabel, actor: WorkspaceMembership):
+    project, board = _locked_project_board(board_id=label.project.board.pk)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    _require_manager(actor)
+    _require_active(project)
+    label = ProjectLabel.objects.select_for_update().filter(pk=label.pk, project=project).first()
+    if label is None:
+        raise ValidationError("برچسب موردنظر پیدا نشد.")
+    label.delete()
+
+
+def _locked_task_context(*, task: Task, actor: WorkspaceMembership):
+    project, board = _locked_project_board(board_id=task.column.board_id)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    _require_active(project)
+    task = Task.objects.select_for_update().filter(pk=task.pk, column__board=board).first()
+    if task is None:
+        raise ValidationError("وظیفهٔ موردنظر پیدا نشد.")
+    return project, task, actor
+
+
+@transaction.atomic
+def set_task_label(*, task: Task, label: ProjectLabel, actor: WorkspaceMembership, attached: bool):
+    project, task, actor = _locked_task_context(task=task, actor=actor)
+    if not isinstance(attached, bool):
+        raise ValidationError("وضعیت برچسب معتبر نیست.")
+    label = ProjectLabel.objects.select_for_update().filter(pk=label.pk, project=project).first()
+    if label is None:
+        raise ValidationError("برچسب باید متعلق به پروژهٔ همین وظیفه باشد.")
+    if attached:
+        _, changed = TaskLabel.objects.get_or_create(task=task, label=label)
+    else:
+        changed, _ = TaskLabel.objects.filter(task=task, label=label).delete()
+    if changed:
+        _record_task_activity(
+            project=project,
+            task=task,
+            actor=actor,
+            event_type=(
+                TaskActivity.EventType.LABEL_ATTACHED
+                if attached
+                else TaskActivity.EventType.LABEL_DETACHED
+            ),
+            metadata={"label_id": label.pk, "label_name": label.name, "label_color": label.color},
+        )
 
 
 def _locked_project_board(*, board_id: int) -> tuple[Project, Board]:
