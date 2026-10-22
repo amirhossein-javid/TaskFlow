@@ -1,6 +1,6 @@
 # TaskFlow
 
-TaskFlow is a team task management application built with Django 5.2, PostgreSQL, Django Templates, and vanilla JavaScript. Features through Phase 7 include email-based authentication, workspaces with role-based access, project Kanban boards, comments and activity history, task search and filtering, project labels, and task checklists. The responsive Persian RTL interface supports light and dark themes.
+TaskFlow is a team task management application built with Django 5.2, PostgreSQL, Django Templates, and vanilla JavaScript. Features through Phase 8 include email-based authentication, workspaces with role-based access, project Kanban boards, comments and activity history, task search and filtering, project labels, task checklists, and in-app notifications. The responsive Persian RTL interface supports light and dark themes.
 
 ## Requirements
 
@@ -171,6 +171,14 @@ Owners, Admins, and Members can collaboratively create, edit, and delete multipl
 Task activity records explicit label attachment/detachment and checklist or item creation, edits, completion, reopening, and deletion in the same transaction as each change. Repeated requests that leave state unchanged create no activity. Shared-label renames, color changes, and deletion do not generate per-task events, and cascading deletions do not generate extra child events.
 
 Application writes go through scoped services. The database enforces foreign keys, valid colors, nonblank text, and unique label names and task-label pairs. Cross-project assignment is validated by the model and service; direct ORM or SQL writes that bypass services are unsupported. Project label, task-label assignment, checklist, and checklist item Admin interfaces are read-only.
+
+### In-app notifications (Phase 8)
+
+Workspace members receive notifications when another user assigns them a task, comments on their assigned task, or moves it to a different column. Self-actions, no-op changes, and reordering within a column do not notify. Notifications are recorded in the same transaction as the task change and its activity event.
+
+The paginated inbox at `/notifications/` supports unread filtering, marking individual notifications read or unread, and marking all visible notifications read. The navigation bell shows the unread count on each page request; there is no polling or external delivery. Notifications and links require current task access. Leaving a workspace hides its notifications; rejoining makes retained notifications accessible again. Archived projects remain readable, including notification read-state controls.
+
+Deleting a task, project, or recipient removes the corresponding notifications. There is no automatic retention policy. Notification Admin is read-only.
 
 ## Language conventions
 
