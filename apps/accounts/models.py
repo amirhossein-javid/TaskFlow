@@ -2,6 +2,7 @@ from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
+from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -21,11 +22,27 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         ordering = ["email"]
+        constraints = [
+            models.UniqueConstraint(
+                Lower(Trim("email")),
+                name="unique_user_email_ci",
+                violation_error_message="کاربری با این ایمیل وجود دارد.",
+            )
+        ]
         verbose_name = _("کاربر")
         verbose_name_plural = _("کاربران")
 
     def __str__(self) -> str:
         return self.email
+
+    def clean_fields(self, exclude=None):
+        self.email = UserManager.normalize_email(self.email)
+        super().clean_fields(exclude=exclude)
+
+    def save(self, *args, **kwargs):
+        if kwargs.get("update_fields") is None or "email" in kwargs["update_fields"]:
+            self.email = UserManager.normalize_email(self.email)
+        super().save(*args, **kwargs)
 
 
 class Profile(models.Model):

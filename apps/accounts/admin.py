@@ -1,8 +1,9 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
+from .db import is_email_conflict
 from .forms import UserChangeForm, UserCreationForm
 from .models import Profile, User
 
@@ -18,6 +19,16 @@ class UserAdmin(BaseUserAdmin):
     ordering = ("email",)
     filter_horizontal = ("groups", "user_permissions")
     readonly_fields = ("date_joined", "last_login")
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        try:
+            return super().changeform_view(request, object_id, form_url, extra_context)
+        except IntegrityError as error:
+            if not is_email_conflict(error):
+                raise
+            # The Admin transaction has rolled back. Rebind against the winning
+            # committed account so normal email validation renders a field error.
+            return super().changeform_view(request, object_id, form_url, extra_context)
 
     def has_delete_permission(self, request, obj=None):
         return super().has_delete_permission(request, obj) and (

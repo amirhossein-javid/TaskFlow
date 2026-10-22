@@ -4,12 +4,22 @@ from django.contrib.auth.base_user import BaseUserManager
 class UserManager(BaseUserManager):
     use_in_migrations = True
 
+    @classmethod
+    def normalize_email(cls, email):
+        return super().normalize_email(email).strip().lower()
+
+    def get_by_natural_key(self, username):
+        return self.get(email__iexact=self.normalize_email(username))
+
+    async def aget_by_natural_key(self, username):
+        return await self.aget(email__iexact=self.normalize_email(username))
+
     def create_user(self, email: str, password: str | None = None, **extra_fields):
         if not email:
             raise ValueError("وارد کردن ایمیل الزامی است.")
 
         user = self.model(
-            email=self.normalize_email(email).lower(),
+            email=self.normalize_email(email),
             **extra_fields,
         )
         user.set_password(password)

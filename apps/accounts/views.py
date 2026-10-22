@@ -1,10 +1,12 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import IntegrityError, transaction
 from django.shortcuts import redirect
 from django.urls import reverse, reverse_lazy
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.generic import FormView, UpdateView
 
+from .db import is_email_conflict
 from .forms import ProfileForm, RegistrationForm
 from .models import Profile
 
@@ -20,7 +22,14 @@ class RegistrationView(FormView):
         return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
-        form.save()
+        try:
+            with transaction.atomic():
+                form.save()
+        except IntegrityError as error:
+            if not is_email_conflict(error):
+                raise
+            form.add_error("email", "کاربری با این ایمیل وجود دارد.")
+            return self.form_invalid(form)
         messages.success(self.request, "حساب کاربری شما ساخته شد. اکنون وارد شوید.")
         return super().form_valid(form)
 

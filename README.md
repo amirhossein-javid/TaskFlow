@@ -53,6 +53,20 @@ The accounts application provides:
 
 The main account routes are under `/accounts/`. Development password-reset emails are written to the console by default.
 
+Email identity is case-insensitive. Model saves, registration, and Admin normalize
+emails by trimming surrounding whitespace and lowercasing; PostgreSQL also enforces
+uniqueness on the normalized value. Login accepts email case differences. Concurrent
+registration or Admin email conflicts return a Persian validation error.
+
+Migration `accounts.0006_user_email_identity` normalizes existing emails while
+preserving user IDs and relationships. It locks the user table for the duration of
+the migration. If existing accounts collide after normalization, it aborts atomically
+and reports their user IDs without merging or deleting accounts. Before upgrading,
+back up the database and schedule a maintenance window; resolve reported identities
+explicitly after verifying account ownership, then rerun `migrate`. Do not delete or
+merge accounts automatically. Reversing the migration removes the added constraint
+but does not restore the original email casing or whitespace.
+
 Standard individual user-creation paths (registration, Admin, `create_user()`,
 `create_superuser()`, `createsuperuser`, and normal model saves) create exactly one
 Profile through the existing `post_save` signal. The one-to-one constraint prevents
