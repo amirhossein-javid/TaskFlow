@@ -7,6 +7,9 @@ from .views import (
     ColumnRenameView,
     ColumnReorderView,
     ColumnShiftView,
+    TaskCommentCreateView,
+    TaskCommentDeleteView,
+    TaskCommentEditView,
     TaskCreateView,
     TaskDeleteView,
     TaskDetailView,
@@ -30,4 +33,19 @@ urlpatterns = [
     path("tasks/<int:task_id>/delete/", TaskDeleteView.as_view(), name="task_delete"),
     path("tasks/<int:task_id>/move/", TaskMoveView.as_view(), name="task_move"),
     path("tasks/<int:task_id>/nudge/", TaskNudgeView.as_view(), name="task_nudge"),
+    path(
+        "tasks/<int:task_id>/comments/new/",
+        TaskCommentCreateView.as_view(),
+        name="comment_create",
+    ),
+    path(
+        "tasks/<int:task_id>/comments/<int:comment_id>/edit/",
+        TaskCommentEditView.as_view(),
+        name="comment_edit",
+    ),
+    path(
+        "tasks/<int:task_id>/comments/<int:comment_id>/delete/",
+        TaskCommentDeleteView.as_view(),
+        name="comment_delete",
+    ),
 ]

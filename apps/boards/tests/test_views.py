@@ -5,8 +5,8 @@ from django.test import Client
 from django.urls import reverse
 
 from apps.accounts.models import User
-from apps.boards.models import Task
-from apps.boards.services import create_task
+from apps.boards.models import Task, TaskActivity, TaskComment
+from apps.boards.services import create_task, create_task_comment, update_task_comment
 from apps.projects.models import Project
 from apps.workspaces.models import WorkspaceMembership
 from apps.workspaces.services import create_workspace
@@ -525,3 +525,202 @@ def test_archived_project_blocks_remaining_board_mutations(client, context):
     assert column.name == original_column_name
     assert list(context["board"].columns.values_list("id", flat=True)) == original_order
     assert Task.objects.filter(pk=task.pk).exists()
+
+
+def test_member_can_create_edit_and_delete_own_comment(client, context):
+    task = make_task(context)
+    client.force_login(context["member"])
+    create_url = reverse(
+        "boards:comment_create",
+        args=[context["workspace"].slug, context["project"].pk, task.pk],
+    )
+
+    response = client.post(create_url, {"body": "  Initial comment  "})
+    comment = task.comments.get()
+
+    assert response.status_code == 302
+    assert comment.body == "Initial comment"
+    edit_url = reverse(
+        "boards:comment_edit",
+        args=[context["workspace"].slug, context["project"].pk, task.pk, comment.pk],
+    )
+    assert client.get(edit_url).status_code == 200
+    assert client.post(edit_url, {"body": "Updated"}).status_code == 302
+    comment.refresh_from_db()
+    assert comment.body == "Updated"
+
+    delete_url = reverse(
+        "boards:comment_delete",
+        args=[context["workspace"].slug, context["project"].pk, task.pk, comment.pk],
+    )
+    assert client.get(delete_url).status_code == 200
+    assert client.post(delete_url).status_code == 302
+    assert not TaskComment.objects.filter(pk=comment.pk).exists()
+
+
+def test_comment_authorization_uses_403_inside_task_and_404_outside_scope(client, context):
+    task = make_task(context)
+    comment = create_task_comment(
+        task=task,
+        actor=context["member_membership"],
+        body="Private ownership",
+    )
+    client.force_login(context["owner"])
+    edit_url = reverse(
+        "boards:comment_edit",
+        args=[context["workspace"].slug, context["project"].pk, task.pk, comment.pk],
+    )
+    delete_url = reverse(
+        "boards:comment_delete",
+        args=[context["workspace"].slug, context["project"].pk, task.pk, comment.pk],
+    )
+
+    assert client.get(edit_url).status_code == 403
+    assert client.post(edit_url, {"body": "Blocked"}).status_code == 403
+    assert client.get(delete_url).status_code == 403
+    assert client.post(delete_url).status_code == 403
+
+    other_task = make_task(context, title="Other")
+    cross_task_url = reverse(
+        "boards:comment_edit",
+        args=[context["workspace"].slug, context["project"].pk, other_task.pk, comment.pk],
+    )
+    assert client.get(cross_task_url).status_code == 404
+
+    client.force_login(context["outsider"])
+    assert client.get(edit_url).status_code == 404
+
+
+def test_archived_project_shows_collaboration_history_but_blocks_comment_changes(client, context):
+    task = make_task(context)
+    comment = create_task_comment(
+        task=task,
+        actor=context["member_membership"],
+        body="Visible history",
+    )
+    context["project"].status = Project.Status.ARCHIVED
+    context["project"].save(update_fields=["status"])
+    client.force_login(context["member"])
+    detail_url = reverse(
+        "boards:task_detail",
+        args=[context["workspace"].slug, context["project"].pk, task.pk],
+    )
+    create_url = reverse(
+        "boards:comment_create",
+        args=[context["workspace"].slug, context["project"].pk, task.pk],
+    )
+    edit_url = reverse(
+        "boards:comment_edit",
+        args=[context["workspace"].slug, context["project"].pk, task.pk, comment.pk],
+    )
+    delete_url = reverse(
+        "boards:comment_delete",
+        args=[context["workspace"].slug, context["project"].pk, task.pk, comment.pk],
+    )
+
+    detail_response = client.get(detail_url)
+    assert detail_response.status_code == 200
+    assert "Visible history" in detail_response.content.decode()
+    assert client.post(create_url, {"body": "Blocked"}).status_code == 302
+    assert client.get(edit_url).status_code == 302
+    assert client.post(edit_url, {"body": "Blocked"}).status_code == 302
+    assert client.get(delete_url).status_code == 302
+    assert client.post(delete_url).status_code == 302
+    comment.refresh_from_db()
+    assert comment.body == "Visible history"
+
+
+def test_task_detail_paginates_comments_and_activity_independently(client, context):
+    task = make_task(context)
+    TaskComment.objects.bulk_create(
+        [
+            TaskComment(task=task, author=context["member"], body=f"Comment {index}")
+            for index in range(21)
+        ]
+    )
+    TaskActivity.objects.bulk_create(
+        [
+            TaskActivity(
+                project=context["project"],
+                task=task,
+                actor=context["member"],
+                event_type=TaskActivity.EventType.TASK_UPDATED,
+                task_title=task.title,
+            )
+            for _index in range(30)
+        ]
+    )
+    client.force_login(context["member"])
+    response = client.get(
+        reverse(
+            "boards:task_detail",
+            args=[context["workspace"].slug, context["project"].pk, task.pk],
+        ),
+        {"comments_page": 2, "activity_page": 2},
+    )
+
+    assert response.status_code == 200
+    assert response.context["comment_page"].number == 2
+    assert len(response.context["comment_page"]) == 1
+    assert response.context["activity_page"].number == 2
+    assert len(response.context["activity_page"]) == 1
+
+
+def test_comment_edited_indicator_tracks_real_edits_only(client, context):
+    task = make_task(context)
+    comment = create_task_comment(
+        task=task,
+        actor=context["member_membership"],
+        body="Original",
+    )
+    client.force_login(context["member"])
+    detail_url = reverse(
+        "boards:task_detail",
+        args=[context["workspace"].slug, context["project"].pk, task.pk],
+    )
+
+    assert "ویرایش‌شده" not in client.get(detail_url).content.decode()
+
+    unchanged_updated_at = comment.updated_at
+    unchanged = update_task_comment(
+        comment=comment,
+        actor=context["member_membership"],
+        body="Original",
+    )
+    assert unchanged.updated_at == unchanged_updated_at
+    assert "ویرایش‌شده" not in client.get(detail_url).content.decode()
+
+    update_task_comment(
+        comment=comment,
+        actor=context["member_membership"],
+        body="Edited",
+    )
+    assert "ویرایش‌شده" in client.get(detail_url).content.decode()
+
+
+def test_comment_endpoints_enforce_methods_and_csrf(context):
+    task = make_task(context)
+    comment = create_task_comment(
+        task=task,
+        actor=context["member_membership"],
+        body="Protected",
+    )
+    client = Client(enforce_csrf_checks=True)
+    client.force_login(context["member"])
+    create_url = reverse(
+        "boards:comment_create",
+        args=[context["workspace"].slug, context["project"].pk, task.pk],
+    )
+    edit_url = reverse(
+        "boards:comment_edit",
+        args=[context["workspace"].slug, context["project"].pk, task.pk, comment.pk],
+    )
+
+    assert client.get(create_url).status_code == 405
+    assert client.post(create_url, {"body": "Blocked"}).status_code == 403
+    assert client.post(edit_url, {"body": "Blocked"}).status_code == 403
+
+    method_client = Client()
+    method_client.force_login(context["member"])
+    assert method_client.put(create_url, {"body": "Blocked"}).status_code == 405
+    assert method_client.put(edit_url, {"body": "Blocked"}).status_code == 405

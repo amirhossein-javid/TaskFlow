@@ -5,7 +5,7 @@ from django.db.models import F
 from apps.projects.models import Project
 from apps.workspaces.models import WorkspaceMembership
 
-from .models import Board, BoardColumn, Task
+from .models import Board, BoardColumn, Task, TaskActivity, TaskComment
 
 POSITION_OFFSET = 1_000_000
 
@@ -40,6 +40,24 @@ def _require_manager(membership: WorkspaceMembership) -> None:
 def _require_active(project: Project) -> None:
     if project.status == Project.Status.ARCHIVED:
         raise ValidationError("پروژهٔ بایگانی‌شده فقط قابل مشاهده است.")
+
+
+def _record_task_activity(
+    *,
+    project: Project,
+    task: Task,
+    actor: WorkspaceMembership,
+    event_type: str,
+    metadata: dict | None = None,
+) -> TaskActivity:
+    return TaskActivity.objects.create(
+        project=project,
+        task=task,
+        actor=actor.user,
+        event_type=event_type,
+        task_title=task.title,
+        metadata=metadata or {},
+    )
 
 
 def _rewrite_column_positions(board: Board, ordered_columns: list[BoardColumn]) -> None:
@@ -190,6 +208,20 @@ def _validate_assignee(*, workspace_id: int, assignee_id: int | None) -> None:
         raise ValidationError({"assignee": "مسئول باید عضو همین فضای کاری باشد."})
 
 
+def _locked_comment_task(*, task_id: int, board: Board) -> Task:
+    task = Task.objects.select_for_update().filter(pk=task_id, column__board=board).first()
+    if task is None:
+        raise ValidationError("وظیفهٔ مربوط به دیدگاه دیگر وجود ندارد.")
+    return task
+
+
+def _locked_comment(*, comment_id: int, task: Task) -> TaskComment:
+    comment = TaskComment.objects.select_for_update().filter(pk=comment_id, task=task).first()
+    if comment is None:
+        raise ValidationError("دیدگاه موردنظر دیگر وجود ندارد.")
+    return comment
+
+
 @transaction.atomic
 def create_task(
     *,
@@ -222,6 +254,13 @@ def create_task(
     )
     task.full_clean()
     task.save()
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=TaskActivity.EventType.TASK_CREATED,
+        metadata={"column_id": column.pk, "column_name": column.name},
+    )
     return task
 
 
@@ -237,14 +276,28 @@ def update_task(
     assignee,
 ) -> Task:
     project, board = _locked_project_board(board_id=task.column.board_id)
-    _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
     _require_active(project)
     task = Task.objects.select_for_update().get(pk=task.pk, column__board=board)
     _validate_assignee(
         workspace_id=project.workspace_id,
         assignee_id=assignee.pk if assignee else None,
     )
-    task.title = title.strip()
+    normalized_title = title.strip()
+    normalized_assignee_id = assignee.pk if assignee else None
+    changed_fields = []
+    for field_name, value in {
+        "title": normalized_title,
+        "description": description,
+        "priority": priority,
+        "due_date": due_date,
+    }.items():
+        if getattr(task, field_name) != value:
+            changed_fields.append(field_name)
+    assignee_changed = task.assignee_id != normalized_assignee_id
+    if not changed_fields and not assignee_changed:
+        return task
+    task.title = normalized_title
     task.description = description
     task.priority = priority
     task.due_date = due_date
@@ -260,16 +313,39 @@ def update_task(
             "updated_at",
         ]
     )
+    if changed_fields:
+        _record_task_activity(
+            project=project,
+            task=task,
+            actor=actor,
+            event_type=TaskActivity.EventType.TASK_UPDATED,
+            metadata={"changed_fields": changed_fields},
+        )
+    if assignee_changed:
+        _record_task_activity(
+            project=project,
+            task=task,
+            actor=actor,
+            event_type=TaskActivity.EventType.ASSIGNEE_CHANGED,
+            metadata={"assignee_id": normalized_assignee_id},
+        )
     return task
 
 
 @transaction.atomic
 def delete_task(*, task: Task, actor: WorkspaceMembership) -> None:
     project, board = _locked_project_board(board_id=task.column.board_id)
-    _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
     _require_active(project)
     task = Task.objects.select_for_update().get(pk=task.pk, column__board=board)
     source_column_id = task.column_id
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=TaskActivity.EventType.TASK_DELETED,
+        metadata={"column_id": source_column_id},
+    )
     task.delete()
     remaining = list(
         Task.objects.select_for_update()
@@ -288,10 +364,16 @@ def move_task(
     target_position: int,
 ) -> Task:
     project, board = _locked_project_board(board_id=task.column.board_id)
-    _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
     _require_active(project)
     columns, tasks = _locked_board_order(board)
-    return _apply_task_move(
+    locked_task = next((item for item in tasks if item.pk == task.pk), None)
+    if locked_task is None:
+        raise ValidationError("وظیفهٔ موردنظر در این برد پیدا نشد.")
+    source_column_id = locked_task.column_id
+    source_position = locked_task.position
+    column_names = {column.pk: column.name for column in columns}
+    moved_task = _apply_task_move(
         board=board,
         columns=columns,
         tasks=tasks,
@@ -299,6 +381,22 @@ def move_task(
         target_column_id=target_column.pk,
         target_position=target_position,
     )
+    if (source_column_id, source_position) != (moved_task.column_id, moved_task.position):
+        _record_task_activity(
+            project=project,
+            task=moved_task,
+            actor=actor,
+            event_type=TaskActivity.EventType.TASK_MOVED,
+            metadata={
+                "from_column_id": source_column_id,
+                "from_column_name": column_names[source_column_id],
+                "from_position": source_position,
+                "to_column_id": moved_task.column_id,
+                "to_column_name": column_names[moved_task.column_id],
+                "to_position": moved_task.position,
+            },
+        )
+    return moved_task
 
 
 @transaction.atomic
@@ -309,7 +407,7 @@ def nudge_task(
     direction: str,
 ) -> Task:
     project, board = _locked_project_board(board_id=task.column.board_id)
-    _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
     _require_active(project)
     columns, tasks = _locked_board_order(board)
     task = next((item for item in tasks if item.pk == task.pk), None)
@@ -336,11 +434,108 @@ def nudge_task(
         target_position = sum(
             item.column_id == target_column_id and item.pk != task.pk for item in tasks
         )
-    return _apply_task_move(
+    source_column_id = task.column_id
+    source_position = task.position
+    column_names = {column.pk: column.name for column in columns}
+    moved_task = _apply_task_move(
         board=board,
         columns=columns,
         tasks=tasks,
         task_id=task.pk,
         target_column_id=target_column_id,
         target_position=target_position,
+    )
+    if (source_column_id, source_position) != (moved_task.column_id, moved_task.position):
+        _record_task_activity(
+            project=project,
+            task=moved_task,
+            actor=actor,
+            event_type=TaskActivity.EventType.TASK_MOVED,
+            metadata={
+                "from_column_id": source_column_id,
+                "from_column_name": column_names[source_column_id],
+                "from_position": source_position,
+                "to_column_id": moved_task.column_id,
+                "to_column_name": column_names[moved_task.column_id],
+                "to_position": moved_task.position,
+            },
+        )
+    return moved_task
+
+
+@transaction.atomic
+def create_task_comment(
+    *,
+    task: Task,
+    actor: WorkspaceMembership,
+    body: str,
+) -> TaskComment:
+    project, board = _locked_project_board(board_id=task.column.board_id)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    _require_active(project)
+    task = _locked_comment_task(task_id=task.pk, board=board)
+    comment = TaskComment(task=task, author=actor.user, body=body.strip())
+    comment.full_clean()
+    comment.save()
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=TaskActivity.EventType.COMMENT_CREATED,
+        metadata={"comment_id": comment.pk},
+    )
+    return comment
+
+
+@transaction.atomic
+def update_task_comment(
+    *,
+    comment: TaskComment,
+    actor: WorkspaceMembership,
+    body: str,
+) -> TaskComment:
+    project, board = _locked_project_board(board_id=comment.task.column.board_id)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    _require_active(project)
+    task = _locked_comment_task(task_id=comment.task_id, board=board)
+    comment = _locked_comment(comment_id=comment.pk, task=task)
+    if comment.author_id != actor.user_id:
+        raise PermissionDenied
+    normalized_body = body.strip()
+    if comment.body == normalized_body:
+        return comment
+    comment.body = normalized_body
+    comment.full_clean()
+    comment.save(update_fields=["body", "updated_at"])
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=TaskActivity.EventType.COMMENT_EDITED,
+        metadata={"comment_id": comment.pk},
+    )
+    return comment
+
+
+@transaction.atomic
+def delete_task_comment(
+    *,
+    comment: TaskComment,
+    actor: WorkspaceMembership,
+) -> None:
+    project, board = _locked_project_board(board_id=comment.task.column.board_id)
+    actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
+    _require_active(project)
+    task = _locked_comment_task(task_id=comment.task_id, board=board)
+    comment = _locked_comment(comment_id=comment.pk, task=task)
+    if comment.author_id != actor.user_id:
+        raise PermissionDenied
+    comment_id = comment.pk
+    comment.delete()
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=TaskActivity.EventType.COMMENT_DELETED,
+        metadata={"comment_id": comment_id},
     )

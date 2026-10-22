@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}ویرایش دیدگاه | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="workspace-page page-width narrow-page">
+    <a class="back-link" href="{% url 'boards:task_detail' workspace.slug project.pk task.pk %}">→ بازگشت به وظیفه</a>
+    <article class="form-card">
+        <p class="eyebrow">{{ task.title }}</p>
+        <h1>ویرایش دیدگاه</h1>
+        <form method="post" novalidate>
+            {% csrf_token %}
+            {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors }}</div>{% endif %}
+            <div class="form-field {% if form.body.errors %}has-error{% endif %}">
+                <label for="{{ form.body.id_for_label }}">متن دیدگاه</label>
+                {{ form.body }}
+                {% for error in form.body.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </div>
+            <div class="form-actions">
+                <button class="button button-primary" type="submit">ذخیره تغییرات</button>
+                <a class="button button-ghost" href="{% url 'boards:task_detail' workspace.slug project.pk task.pk %}">انصراف</a>
+            </div>
+        </form>
+    </article>
+</section>
+{% endblock %}

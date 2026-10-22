@@ -1,7 +1,11 @@
 import json
 
 from django.contrib import messages
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.paginator import Paginator
+from django.db.models import BigIntegerField, Exists, OuterRef
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
@@ -10,20 +14,23 @@ from django.views.generic import DetailView, FormView, TemplateView, UpdateView
 from apps.projects.models import Project
 from apps.workspaces.models import WorkspaceMembership
 
-from .forms import BoardColumnForm, TaskForm
+from .forms import BoardColumnForm, TaskCommentForm, TaskForm
 from .mixins import BoardAccessMixin, BoardManagerRequiredMixin
-from .models import Task
+from .models import Task, TaskActivity
 from .services import (
     create_column,
     create_task,
+    create_task_comment,
     delete_column,
     delete_task,
+    delete_task_comment,
     move_task,
     nudge_task,
     rename_column,
     reorder_columns,
     shift_column,
     update_task,
+    update_task_comment,
 )
 
 
@@ -206,6 +213,34 @@ class TaskDetailView(BoardAccessMixin, DetailView):
     def get_object(self, queryset=None):
         return self.get_task()
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        edited_activities = (
+            TaskActivity.objects.filter(
+                task=self.object,
+                event_type=TaskActivity.EventType.COMMENT_EDITED,
+            )
+            .annotate(
+                comment_id=Cast(
+                    KeyTextTransform("comment_id", "metadata"),
+                    output_field=BigIntegerField(),
+                )
+            )
+            .filter(comment_id=OuterRef("pk"))
+        )
+        comments = self.object.comments.select_related("author", "author__profile").annotate(
+            was_edited=Exists(edited_activities)
+        )
+        activities = self.object.activities.select_related("actor", "actor__profile")
+        context["comment_page"] = Paginator(comments, 20).get_page(
+            self.request.GET.get("comments_page")
+        )
+        context["activity_page"] = Paginator(activities, 30).get_page(
+            self.request.GET.get("activity_page")
+        )
+        context["comment_form"] = TaskCommentForm()
+        return context
+
 
 class TaskEditView(BoardAccessMixin, UpdateView):
     template_name = "boards/task_form.html"
@@ -339,3 +374,140 @@ class TaskNudgeView(BoardAccessMixin, View):
         except ValidationError as error:
             _service_error(request, error)
         return redirect("boards:detail", slug=self.workspace.slug, project_id=self.project.pk)
+
+
+class TaskCommentCreateView(BoardAccessMixin, FormView):
+    form_class = TaskCommentForm
+    http_method_names = ["post"]
+
+    def check_workspace_permission(self):
+        super().check_workspace_permission()
+        self.task = self.get_task()
+
+    def form_valid(self, form):
+        try:
+            create_task_comment(
+                task=self.task,
+                actor=self.membership,
+                **form.cleaned_data,
+            )
+        except ValidationError as error:
+            _service_error(self.request, error)
+        else:
+            messages.success(self.request, "دیدگاه ثبت شد.")
+        return self.get_success_response()
+
+    def form_invalid(self, form):
+        messages.error(
+            self.request,
+            form.errors.get("body", ["متن دیدگاه معتبر نیست."])[0],
+        )
+        return self.get_success_response()
+
+    def get_success_response(self):
+        return redirect(
+            "boards:task_detail",
+            slug=self.workspace.slug,
+            project_id=self.project.pk,
+            task_id=self.task.pk,
+        )
+
+
+class TaskCommentAuthorMixin(BoardAccessMixin):
+    task = None
+    comment = None
+
+    def check_workspace_permission(self):
+        super().check_workspace_permission()
+        self.task = self.get_task()
+        self.comment = self.get_comment(task=self.task)
+        if self.comment.author_id != self.request.user.pk:
+            raise PermissionDenied
+
+    def archived_response(self):
+        messages.error(self.request, "پروژهٔ بایگانی‌شده فقط قابل مشاهده است.")
+        return redirect(
+            "boards:task_detail",
+            slug=self.workspace.slug,
+            project_id=self.project.pk,
+            task_id=self.task.pk,
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.setdefault("task", self.task)
+        return context
+
+
+class TaskCommentEditView(TaskCommentAuthorMixin, UpdateView):
+    template_name = "boards/comment_form.html"
+    form_class = TaskCommentForm
+    context_object_name = "comment"
+    http_method_names = ["get", "post"]
+
+    def get_object(self, queryset=None):
+        return self.comment
+
+    def get(self, request, *args, **kwargs):
+        if self.project.status == Project.Status.ARCHIVED:
+            return self.archived_response()
+        return super().get(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        if self.project.status == Project.Status.ARCHIVED:
+            return self.archived_response()
+        return super().post(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        try:
+            self.object = update_task_comment(
+                comment=self.comment,
+                actor=self.membership,
+                **form.cleaned_data,
+            )
+        except ValidationError as error:
+            form.add_error(None, error)
+            return self.form_invalid(form)
+        messages.success(self.request, "دیدگاه ویرایش شد.")
+        return redirect(
+            "boards:task_detail",
+            slug=self.workspace.slug,
+            project_id=self.project.pk,
+            task_id=self.task.pk,
+        )
+
+
+class TaskCommentDeleteView(TaskCommentAuthorMixin, View):
+    template_name = "boards/comment_delete_confirm.html"
+    http_method_names = ["get", "post"]
+
+    def get(self, request, *args, **kwargs):
+        if self.project.status == Project.Status.ARCHIVED:
+            return self.archived_response()
+        return render(
+            request,
+            self.template_name,
+            {
+                "workspace": self.workspace,
+                "membership": self.membership,
+                "project": self.project,
+                "task": self.task,
+                "comment": self.comment,
+            },
+        )
+
+    def post(self, request, *args, **kwargs):
+        if self.project.status == Project.Status.ARCHIVED:
+            return self.archived_response()
+        try:
+            delete_task_comment(comment=self.comment, actor=self.membership)
+        except ValidationError as error:
+            _service_error(request, error)
+        else:
+            messages.success(request, "دیدگاه حذف شد.")
+        return redirect(
+            "boards:task_detail",
+            slug=self.workspace.slug,
+            project_id=self.project.pk,
+            task_id=self.task.pk,
+        )

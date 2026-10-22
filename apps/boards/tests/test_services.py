@@ -1,21 +1,25 @@
 from datetime import date
+from unittest.mock import patch
 
 import pytest
 from django.core.exceptions import PermissionDenied, ValidationError
 
 from apps.accounts.models import User
-from apps.boards.models import Task
+from apps.boards.models import Task, TaskActivity, TaskComment
 from apps.boards.services import (
     create_column,
     create_task,
+    create_task_comment,
     delete_column,
     delete_task,
+    delete_task_comment,
     move_task,
     nudge_task,
     rename_column,
     reorder_columns,
     shift_column,
     update_task,
+    update_task_comment,
 )
 from apps.projects.models import Project
 from apps.workspaces.models import WorkspaceMembership
@@ -126,6 +130,196 @@ def test_member_can_create_and_update_task(board_context):
     assert updated.priority == Task.Priority.HIGH
     assert updated.assignee is None
 
+    assert list(task.activities.values_list("event_type", flat=True)) == [
+        TaskActivity.EventType.ASSIGNEE_CHANGED,
+        TaskActivity.EventType.TASK_UPDATED,
+        TaskActivity.EventType.TASK_CREATED,
+    ]
+    update_event = task.activities.get(event_type=TaskActivity.EventType.TASK_UPDATED)
+    assignee_event = task.activities.get(event_type=TaskActivity.EventType.ASSIGNEE_CHANGED)
+    assert update_event.metadata == {
+        "changed_fields": ["title", "description", "priority", "due_date"]
+    }
+    assert assignee_event.metadata == {"assignee_id": None}
+
+
+def test_task_activity_skips_no_op_updates_and_incidental_reordering(board_context):
+    actor = board_context["member_membership"]
+    column = board_context["board"].columns.first()
+    first = create_task(
+        column=column,
+        actor=actor,
+        title="First",
+        description="",
+        priority=Task.Priority.MEDIUM,
+        due_date=None,
+        assignee=None,
+    )
+    second = create_task(
+        column=column,
+        actor=actor,
+        title="Second",
+        description="",
+        priority=Task.Priority.MEDIUM,
+        due_date=None,
+        assignee=None,
+    )
+
+    update_task(
+        task=first,
+        actor=actor,
+        title=first.title,
+        description=first.description,
+        priority=first.priority,
+        due_date=first.due_date,
+        assignee=first.assignee,
+    )
+    move_task(task=second, actor=actor, target_column=column, target_position=0)
+
+    assert list(first.activities.values_list("event_type", flat=True)) == [
+        TaskActivity.EventType.TASK_CREATED
+    ]
+    assert list(second.activities.values_list("event_type", flat=True)) == [
+        TaskActivity.EventType.TASK_MOVED,
+        TaskActivity.EventType.TASK_CREATED,
+    ]
+
+
+def test_activity_failure_rolls_back_task_update(board_context):
+    actor = board_context["member_membership"]
+    task = create_task(
+        column=board_context["board"].columns.first(),
+        actor=actor,
+        title="Original",
+        description="",
+        priority=Task.Priority.MEDIUM,
+        due_date=None,
+        assignee=None,
+    )
+
+    with (
+        patch.object(TaskActivity.objects, "create", side_effect=RuntimeError("storage error")),
+        pytest.raises(RuntimeError, match="storage error"),
+    ):
+        update_task(
+            task=task,
+            actor=actor,
+            title="Changed",
+            description="",
+            priority=Task.Priority.MEDIUM,
+            due_date=None,
+            assignee=None,
+        )
+
+    task.refresh_from_db()
+    assert task.title == "Original"
+
+
+def test_task_deletion_preserves_activity_with_snapshot(board_context):
+    task = create_task(
+        column=board_context["board"].columns.first(),
+        actor=board_context["member_membership"],
+        title="Disposable",
+        description="",
+        priority=Task.Priority.MEDIUM,
+        due_date=None,
+        assignee=None,
+    )
+
+    delete_task(task=task, actor=board_context["member_membership"])
+
+    events = TaskActivity.objects.filter(task_title="Disposable")
+    assert list(events.values_list("event_type", flat=True)) == [
+        TaskActivity.EventType.TASK_DELETED,
+        TaskActivity.EventType.TASK_CREATED,
+    ]
+    assert all(event.task is None for event in events)
+
+
+def test_comment_services_enforce_ownership_and_record_meaningful_activity(board_context):
+    task = create_task(
+        column=board_context["board"].columns.first(),
+        actor=board_context["member_membership"],
+        title="Discuss",
+        description="",
+        priority=Task.Priority.MEDIUM,
+        due_date=None,
+        assignee=None,
+    )
+    comment = create_task_comment(
+        task=task,
+        actor=board_context["member_membership"],
+        body="  First comment  ",
+    )
+
+    with pytest.raises(PermissionDenied):
+        update_task_comment(
+            comment=comment,
+            actor=board_context["owner_membership"],
+            body="Owner edit",
+        )
+    update_task_comment(
+        comment=comment,
+        actor=board_context["member_membership"],
+        body="First comment",
+    )
+    comment.refresh_from_db()
+    unchanged_updated_at = comment.updated_at
+    updated = update_task_comment(
+        comment=comment,
+        actor=board_context["member_membership"],
+        body="Updated comment",
+    )
+
+    assert updated.body == "Updated comment"
+    assert updated.updated_at > unchanged_updated_at
+    assert list(
+        task.activities.filter(event_type__startswith="comment").values_list(
+            "event_type", flat=True
+        )
+    ) == [
+        TaskActivity.EventType.COMMENT_EDITED,
+        TaskActivity.EventType.COMMENT_CREATED,
+    ]
+
+    delete_task_comment(comment=updated, actor=board_context["member_membership"])
+    assert not TaskComment.objects.filter(pk=comment.pk).exists()
+    assert task.activities.first().event_type == TaskActivity.EventType.COMMENT_DELETED
+
+
+def test_archived_project_blocks_comment_mutations(board_context):
+    task = create_task(
+        column=board_context["board"].columns.first(),
+        actor=board_context["member_membership"],
+        title="Archived",
+        description="",
+        priority=Task.Priority.MEDIUM,
+        due_date=None,
+        assignee=None,
+    )
+    comment = create_task_comment(
+        task=task,
+        actor=board_context["member_membership"],
+        body="Before archive",
+    )
+    board_context["project"].status = Project.Status.ARCHIVED
+    board_context["project"].save(update_fields=["status"])
+
+    with pytest.raises(ValidationError, match="فقط قابل مشاهده"):
+        create_task_comment(
+            task=task,
+            actor=board_context["member_membership"],
+            body="Blocked",
+        )
+    with pytest.raises(ValidationError, match="فقط قابل مشاهده"):
+        update_task_comment(
+            comment=comment,
+            actor=board_context["member_membership"],
+            body="Blocked",
+        )
+    with pytest.raises(ValidationError, match="فقط قابل مشاهده"):
+        delete_task_comment(comment=comment, actor=board_context["member_membership"])
+
 
 def test_task_rejects_assignee_outside_workspace(board_context):
     column = board_context["board"].columns.first()
@@ -172,6 +366,15 @@ def test_move_task_between_columns_keeps_dense_deterministic_order(board_context
         ("First", 0),
         ("Second", 1),
     ]
+    move_event = first.activities.get(event_type=TaskActivity.EventType.TASK_MOVED)
+    assert move_event.metadata == {
+        "from_column_id": source.pk,
+        "from_column_name": source.name,
+        "from_position": 0,
+        "to_column_id": target.pk,
+        "to_column_name": target.name,
+        "to_position": 0,
+    }
 
 
 def test_move_task_within_column_respects_unique_positions(board_context):
