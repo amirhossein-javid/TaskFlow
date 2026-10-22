@@ -69,11 +69,15 @@ class TaskFilterForm(forms.Form):
         users = User.objects.filter(Q(pk__in=members) | Q(pk__in=assigned)).select_related(
             "profile"
         )
-        self.fields["assignee"].choices = [
+        choices = [
             ("", "همهٔ مسئول‌ها"),
             ("unassigned", "بدون مسئول"),
-            *((str(user.pk), user.profile.full_name or user.email) for user in users),
         ]
+        for user in users:
+            profile = getattr(user, "profile", None)
+            label = profile.full_name if profile and profile.full_name else user.email
+            choices.append((str(user.pk), label))
+        self.fields["assignee"].choices = choices
 
     def clean(self):
         cleaned = super().clean()

@@ -5,7 +5,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from apps.accounts.models import User
+from apps.accounts.models import Profile, User
 from apps.boards.forms import TaskFilterForm
 from apps.boards.models import BoardColumn, Task, TaskActivity
 from apps.projects.models import Project
@@ -392,3 +392,36 @@ def test_board_query_count_does_not_grow_with_columns_tasks_or_assignees(
         assert response.status_code == 200
     assert len(large) == len(small)
     assert len(displayed_tasks(response)) >= 100
+
+
+@pytest.mark.parametrize("is_member", [True, False])
+def test_missing_profiles_fall_back_to_email_without_extra_queries(client, search_board, is_member):
+    board, workspace, _, _, tasks = search_board
+    with CaptureQueriesContext(connection) as before:
+        assert client.get(board_url(board)).status_code == 200
+    users = User.objects.bulk_create(
+        [User(email=f"missing-profile-{index}@example.com") for index in range(3)]
+    )
+    if is_member:
+        WorkspaceMembership.objects.bulk_create(
+            [
+                WorkspaceMembership(
+                    workspace=workspace, user=user, role=WorkspaceMembership.Role.MEMBER
+                )
+                for user in users
+            ]
+        )
+    for task, user in zip(tasks, users, strict=True):
+        Task.objects.filter(pk=task.pk).update(assignee=user)
+    with CaptureQueriesContext(connection) as after:
+        response = client.get(board_url(board))
+        assert response.status_code == 200
+    assert len(after) == len(before)
+    choices = dict(response.context["filter_form"].fields["assignee"].choices)
+    for user in users:
+        assert choices[str(user.pk)] == user.email
+        assert user.email in response.content.decode()
+    response = client.get(board_url(board), {"assignee": users[0].pk, "q": "طراحی"})
+    assert response.status_code == 200
+    assert [task.pk for task in displayed_tasks(response)] == [tasks[0].pk]
+    assert not Profile.objects.filter(user__in=users).exists()
