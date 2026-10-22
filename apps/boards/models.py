@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from apps.projects.models import Project
@@ -128,3 +129,98 @@ class Task(models.Model):
             ).exists()
         ):
             raise ValidationError({"assignee": "مسئول باید عضو همین فضای کاری باشد."})
+
+
+class TaskComment(models.Model):
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name="comments",
+        verbose_name=_("وظیفه"),
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="task_comments",
+        verbose_name=_("نویسنده"),
+    )
+    body = models.TextField(_("متن دیدگاه"), max_length=5000)
+    created_at = models.DateTimeField(_("تاریخ ایجاد"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("تاریخ به‌روزرسانی"), auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["task", "-created_at", "-id"],
+                name="comment_task_recent_idx",
+            )
+        ]
+        verbose_name = _("دیدگاه وظیفه")
+        verbose_name_plural = _("دیدگاه‌های وظیفه")
+
+    def __str__(self) -> str:
+        return self.body[:80]
+
+    def clean(self):
+        super().clean()
+        if not self.body.strip():
+            raise ValidationError({"body": "متن دیدگاه نمی‌تواند خالی باشد."})
+
+
+class TaskActivity(models.Model):
+    class EventType(models.TextChoices):
+        TASK_CREATED = "task_created", _("وظیفه ساخته شد")
+        TASK_UPDATED = "task_updated", _("وظیفه به‌روزرسانی شد")
+        ASSIGNEE_CHANGED = "assignee_changed", _("مسئول وظیفه تغییر کرد")
+        TASK_MOVED = "task_moved", _("وظیفه جابه‌جا شد")
+        COMMENT_CREATED = "comment_created", _("دیدگاه ثبت شد")
+        COMMENT_EDITED = "comment_edited", _("دیدگاه ویرایش شد")
+        COMMENT_DELETED = "comment_deleted", _("دیدگاه حذف شد")
+        TASK_DELETED = "task_deleted", _("وظیفه حذف شد")
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="task_activities",
+        verbose_name=_("پروژه"),
+    )
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="activities",
+        verbose_name=_("وظیفه"),
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="task_activities",
+        verbose_name=_("انجام‌دهنده"),
+    )
+    event_type = models.CharField(_("نوع رویداد"), max_length=32, choices=EventType.choices)
+    task_title = models.CharField(_("عنوان وظیفه"), max_length=200)
+    metadata = models.JSONField(_("جزئیات"), default=dict, blank=True)
+    schema_version = models.PositiveSmallIntegerField(_("نسخه ساختار"), default=1)
+    created_at = models.DateTimeField(_("تاریخ رویداد"), default=timezone.now)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["task", "-created_at", "-id"],
+                name="activity_task_recent_idx",
+            ),
+            models.Index(
+                fields=["project", "-created_at", "-id"],
+                name="activity_project_recent_idx",
+            ),
+        ]
+        verbose_name = _("رویداد وظیفه")
+        verbose_name_plural = _("رویدادهای وظیفه")
+
+    def __str__(self) -> str:
+        return f"{self.get_event_type_display()}: {self.task_title}"

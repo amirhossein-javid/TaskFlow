@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Board, BoardColumn, Task
+from .models import Board, BoardColumn, Task, TaskActivity, TaskComment
 
 
 class BoardColumnInline(admin.TabularInline):
@@ -25,3 +25,36 @@ class TaskAdmin(admin.ModelAdmin):
     list_display = ("title", "column", "priority", "assignee", "due_date")
     list_filter = ("priority", "column__board__project__workspace")
     search_fields = ("title", "description", "column__board__project__name")
+
+
+@admin.register(TaskComment)
+class TaskCommentAdmin(admin.ModelAdmin):
+    list_display = ("task", "author", "created_at", "updated_at")
+    search_fields = ("body", "task__title", "author__email")
+    list_filter = ("task__column__board__project__workspace",)
+
+
+@admin.register(TaskActivity)
+class TaskActivityAdmin(admin.ModelAdmin):
+    list_display = ("task_title", "event_type", "actor", "project", "created_at")
+    list_filter = ("event_type", "project__workspace")
+    search_fields = ("task_title", "actor__email", "project__name")
+    readonly_fields = (
+        "project",
+        "task",
+        "actor",
+        "event_type",
+        "task_title",
+        "metadata",
+        "schema_version",
+        "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

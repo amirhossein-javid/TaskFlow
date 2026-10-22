@@ -2,7 +2,7 @@ import pytest
 from django.db import IntegrityError, transaction
 
 from apps.accounts.models import User
-from apps.boards.models import Board, BoardColumn, Task
+from apps.boards.models import Board, BoardColumn, Task, TaskActivity, TaskComment
 from apps.boards.signals import DEFAULT_COLUMN_NAMES
 from apps.projects.models import Project
 from apps.workspaces.services import create_workspace
@@ -57,3 +57,55 @@ def test_workspace_deletion_cascades_through_project_board_and_tasks(project):
 
     assert not Task.objects.filter(pk=task.pk).exists()
     assert not Board.objects.filter(project_id=project.pk).exists()
+
+
+def test_comment_deletion_and_activity_retention_follow_task_lifecycle(project):
+    task = Task.objects.create(
+        column=project.board.columns.first(),
+        title="Task",
+        priority=Task.Priority.MEDIUM,
+        creator=project.creator,
+        position=0,
+    )
+    comment = TaskComment.objects.create(task=task, author=project.creator, body="Comment")
+    activity = TaskActivity.objects.create(
+        project=project,
+        task=task,
+        actor=project.creator,
+        event_type=TaskActivity.EventType.TASK_CREATED,
+        task_title=task.title,
+    )
+
+    task.delete()
+
+    assert not TaskComment.objects.filter(pk=comment.pk).exists()
+    activity.refresh_from_db()
+    assert activity.task is None
+    assert activity.project == project
+    assert activity.task_title == "Task"
+
+
+def test_deleted_users_are_nullable_on_comments_and_activity(project):
+    user = User.objects.create_user(email="member@example.com", password="SecurePass123!")
+    task = Task.objects.create(
+        column=project.board.columns.first(),
+        title="Task",
+        priority=Task.Priority.MEDIUM,
+        creator=project.creator,
+        position=0,
+    )
+    comment = TaskComment.objects.create(task=task, author=user, body="Comment")
+    activity = TaskActivity.objects.create(
+        project=project,
+        task=task,
+        actor=user,
+        event_type=TaskActivity.EventType.COMMENT_CREATED,
+        task_title=task.title,
+    )
+
+    user.delete()
+
+    comment.refresh_from_db()
+    activity.refresh_from_db()
+    assert comment.author is None
+    assert activity.actor is None
