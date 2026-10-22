@@ -3,7 +3,7 @@ import json
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
-from django.db.models import BigIntegerField, Exists, OuterRef
+from django.db.models import BigIntegerField, Case, Exists, F, OuterRef, Prefetch, Q, When
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.http import JsonResponse
@@ -14,7 +14,7 @@ from django.views.generic import DetailView, FormView, TemplateView, UpdateView
 from apps.projects.models import Project
 from apps.workspaces.models import WorkspaceMembership
 
-from .forms import BoardColumnForm, TaskCommentForm, TaskForm
+from .forms import BoardColumnForm, TaskCommentForm, TaskFilterForm, TaskForm
 from .mixins import BoardAccessMixin, BoardManagerRequiredMixin
 from .models import Task, TaskActivity
 from .services import (
@@ -44,9 +44,15 @@ class BoardDetailView(BoardAccessMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        form = TaskFilterForm(self.request.GET, board=self.board, workspace=self.workspace)
+        valid = form.is_valid()
+        context["filter_form"] = form
+        context["has_active_filters"] = not valid or any(form.cleaned_data.values())
+        context["can_move"] = (
+            self.project.status == Project.Status.ACTIVE and not context["has_active_filters"]
+        )
         context["columns"] = self.board.columns.prefetch_related(
-            "tasks__assignee",
-            "tasks__assignee__profile",
+            Prefetch("tasks", queryset=self.get_task_queryset(form)),
         )
         context["column_form"] = BoardColumnForm()
         context["is_manager"] = self.membership.role in {
@@ -54,6 +60,50 @@ class BoardDetailView(BoardAccessMixin, TemplateView):
             WorkspaceMembership.Role.ADMIN,
         }
         return context
+
+    def get_task_queryset(self, form):
+        tasks = Task.objects.filter(column__board=self.board).select_related(
+            "assignee", "assignee__profile"
+        )
+        if not form.is_valid():
+            return tasks.none()
+        filters = form.cleaned_data
+        if filters["q"]:
+            tasks = tasks.filter(
+                Q(title__icontains=filters["q"]) | Q(description__icontains=filters["q"])
+            )
+        if filters["column"]:
+            tasks = tasks.filter(column=filters["column"])
+        if filters["priority"]:
+            tasks = tasks.filter(priority=filters["priority"])
+        if filters["assignee"] == "unassigned":
+            tasks = tasks.filter(assignee__isnull=True)
+        elif filters["assignee"]:
+            tasks = tasks.filter(assignee_id=filters["assignee"])
+        if filters["due_from"]:
+            tasks = tasks.filter(due_date__gte=filters["due_from"])
+        if filters["due_to"]:
+            tasks = tasks.filter(due_date__lte=filters["due_to"])
+
+        sort = filters["sort"]
+        if sort.startswith("priority_"):
+            tasks = tasks.alias(
+                priority_rank=Case(
+                    When(priority=Task.Priority.LOW, then=0),
+                    When(priority=Task.Priority.MEDIUM, then=1),
+                    When(priority=Task.Priority.HIGH, then=2),
+                )
+            )
+        ordering = {
+            "": ("position", "id"),
+            "created_asc": ("created_at", "id"),
+            "created_desc": ("-created_at", "id"),
+            "due_asc": (F("due_date").asc(nulls_last=True), "id"),
+            "due_desc": (F("due_date").desc(nulls_last=True), "id"),
+            "priority_asc": ("priority_rank", "id"),
+            "priority_desc": ("-priority_rank", "id"),
+        }
+        return tasks.order_by(*ordering[sort])
 
 
 class ColumnCreateView(BoardManagerRequiredMixin, View):

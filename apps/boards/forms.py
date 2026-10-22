@@ -1,8 +1,86 @@
 from django import forms
+from django.db.models import Q
 
 from apps.accounts.models import User
 
 from .models import BoardColumn, Task, TaskComment
+
+
+class TaskFilterForm(forms.Form):
+    q = forms.CharField(
+        label="جست‌وجو",
+        required=False,
+        max_length=200,
+        widget=forms.TextInput(attrs={"placeholder": "عنوان یا توضیحات وظیفه"}),
+        error_messages={"max_length": "عبارت جست‌وجو نباید بیشتر از ۲۰۰ نویسه باشد."},
+    )
+    column = forms.ModelChoiceField(
+        label="ستون",
+        queryset=BoardColumn.objects.none(),
+        required=False,
+        empty_label="همهٔ ستون‌ها",
+        error_messages={"invalid_choice": "ستون انتخاب‌شده معتبر نیست."},
+    )
+    priority = forms.ChoiceField(
+        label="اولویت",
+        required=False,
+        choices=[("", "همهٔ اولویت‌ها"), *Task.Priority.choices],
+        error_messages={"invalid_choice": "اولویت انتخاب‌شده معتبر نیست."},
+    )
+    assignee = forms.ChoiceField(
+        label="مسئول",
+        required=False,
+        error_messages={"invalid_choice": "مسئول انتخاب‌شده معتبر نیست."},
+    )
+    due_from = forms.DateField(
+        label="سررسید از",
+        required=False,
+        input_formats=["%Y-%m-%d"],
+        widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+        error_messages={"invalid": "تاریخ شروع سررسید معتبر نیست."},
+    )
+    due_to = forms.DateField(
+        label="سررسید تا",
+        required=False,
+        input_formats=["%Y-%m-%d"],
+        widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+        error_messages={"invalid": "تاریخ پایان سررسید معتبر نیست."},
+    )
+    sort = forms.ChoiceField(
+        label="مرتب‌سازی",
+        required=False,
+        choices=[
+            ("", "ترتیب دستی"),
+            ("created_desc", "جدیدترین"),
+            ("created_asc", "قدیمی‌ترین"),
+            ("due_asc", "نزدیک‌ترین سررسید"),
+            ("due_desc", "دورترین سررسید"),
+            ("priority_desc", "اولویت زیاد به کم"),
+            ("priority_asc", "اولویت کم به زیاد"),
+        ],
+        error_messages={"invalid_choice": "مرتب‌سازی انتخاب‌شده معتبر نیست."},
+    )
+
+    def __init__(self, *args, board, workspace, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["column"].queryset = board.columns.all()
+        members = workspace.memberships.values("user_id")
+        assigned = Task.objects.filter(column__board=board).values("assignee_id")
+        users = User.objects.filter(Q(pk__in=members) | Q(pk__in=assigned)).select_related(
+            "profile"
+        )
+        self.fields["assignee"].choices = [
+            ("", "همهٔ مسئول‌ها"),
+            ("unassigned", "بدون مسئول"),
+            *((str(user.pk), user.profile.full_name or user.email) for user in users),
+        ]
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get("due_from"), cleaned.get("due_to")
+        if start and end and start > end:
+            self.add_error("due_to", "پایان بازهٔ سررسید نباید پیش از شروع آن باشد.")
+        return cleaned
 
 
 class BoardColumnForm(forms.ModelForm):
