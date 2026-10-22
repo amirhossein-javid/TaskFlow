@@ -1,11 +1,13 @@
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.boards.forms import TaskFilterForm
-from apps.boards.models import Task
+from apps.boards.models import BoardColumn, Task, TaskActivity
 from apps.projects.models import Project
 from apps.workspaces.models import WorkspaceMembership
 from apps.workspaces.services import create_workspace
@@ -201,3 +203,192 @@ def test_filter_ui_preserves_values_counts_and_accessible_errors(client, search_
     assert 'aria-invalid="true"' in html
     assert 'aria-describedby="id_priority_error"' in html
     assert 'id="id_priority_error"' in html
+
+
+@pytest.mark.parametrize(
+    ("params", "expected"),
+    [
+        ({"due_from": "2026-10-23"}, [1]),
+        ({"due_to": "2026-10-22"}, [0]),
+        ({"q": "missing"}, []),
+        ({"q": "%"}, []),
+        ({"q": "_"}, []),
+    ],
+)
+def test_search_literals_and_open_date_ranges(client, search_board, params, expected):
+    board, _, _, _, tasks = search_board
+    response = client.get(board_url(board), params)
+    assert [task.pk for task in displayed_tasks(response)] == [tasks[i].pk for i in expected]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"column": "not-an-id"},
+        {"column": "9" * 100},
+        {"due_to": "2026-02-30"},
+        {"due_from": "22/10/2026"},
+        {"q": "api", "priority": "invalid"},
+    ],
+)
+def test_malformed_and_partially_valid_filters_show_persian_errors(client, search_board, params):
+    board, *_ = search_board
+    response = client.get(board_url(board), params)
+    assert response.status_code == 200
+    assert displayed_tasks(response) == []
+    errors = response.context["filter_form"].errors.as_text()
+    assert any("\u0600" <= character <= "\u06ff" for character in errors)
+    assert "تا اصلاح آن‌ها هیچ وظیفه‌ای نمایش داده نمی‌شود." in response.content.decode()
+
+
+def test_empty_filter_values_restore_manual_view_and_escape_search(client, search_board):
+    board, *_ = search_board
+    response = client.get(
+        board_url(board),
+        {
+            "q": "   ",
+            "column": "",
+            "priority": "",
+            "assignee": "",
+            "due_from": "",
+            "due_to": "",
+            "sort": "",
+        },
+    )
+    assert response.context["can_move"]
+    assert len(displayed_tasks(response)) == 3
+    response = client.get(board_url(board), {"q": '<script>alert("x")</script>'})
+    assert '<script>alert("x")</script>' not in response.content.decode()
+    assert "&lt;script&gt;" in response.content.decode()
+
+
+@pytest.mark.parametrize(
+    ("sort", "expected"),
+    [
+        ("created_asc", [0, 4, 3, 2]),
+        ("created_desc", [2, 3, 0, 4]),
+        ("due_asc", [0, 4, 3, 2]),
+        ("due_desc", [3, 0, 4, 2]),
+        ("priority_asc", [3, 2, 0, 4]),
+        ("priority_desc", [0, 4, 2, 3]),
+    ],
+)
+def test_sort_ties_null_dates_and_read_only_state(client, search_board, sort, expected):
+    board, _, _, columns, tasks = search_board
+    tasks.extend(
+        [
+            Task.objects.create(
+                column=columns[0],
+                title="Later low",
+                position=2,
+                priority="low",
+                due_date=date(2026, 10, 23),
+            ),
+            Task.objects.create(
+                column=columns[0],
+                title="Tied high",
+                position=3,
+                priority="high",
+                due_date=date(2026, 10, 22),
+            ),
+        ]
+    )
+    Task.objects.filter(column__board=board).update(created_at=datetime(2026, 10, 20, tzinfo=UTC))
+    Task.objects.filter(pk=tasks[2].pk).update(created_at=datetime(2026, 10, 22, tzinfo=UTC))
+    Task.objects.filter(pk=tasks[3].pk).update(created_at=datetime(2026, 10, 21, tzinfo=UTC))
+    state = list(Task.objects.order_by("pk").values())
+    history = list(TaskActivity.objects.order_by("pk").values())
+    response = client.get(board_url(board), {"sort": sort})
+    assert [task.pk for task in response.context["columns"][0].tasks.all()] == [
+        tasks[index].pk for index in expected
+    ]
+    assert list(response.context["columns"][1].tasks.all()) == [tasks[1]]
+    assert list(Task.objects.order_by("pk").values()) == state
+    assert list(TaskActivity.objects.order_by("pk").values()) == history
+
+
+@pytest.mark.parametrize("same_workspace", [True, False])
+def test_search_and_choices_do_not_leak_other_boards(client, search_board, same_workspace):
+    board, workspace, _, _, _ = search_board
+    unrelated = User.objects.create_user(email="foreign@example.com")
+    if not same_workspace:
+        workspace = create_workspace(user=unrelated, name="Foreign", slug="foreign")
+    project = Project.objects.create(workspace=workspace, name="Foreign")
+    column = project.board.columns.first()
+    Task.objects.create(column=column, title="Private foreign task", position=0, assignee=unrelated)
+    response = client.get(board_url(board), {"q": "Private foreign"})
+    assert displayed_tasks(response) == []
+    assert unrelated.email not in response.content.decode()
+    for params in [{"column": column.pk}, {"assignee": unrelated.pk}]:
+        response = client.get(board_url(board), params)
+        assert displayed_tasks(response) == []
+        assert response.context["filter_form"].errors
+
+
+@pytest.mark.parametrize("role", WorkspaceMembership.Role.values)
+def test_all_workspace_roles_can_search_archived_boards(client, search_board, role):
+    board, workspace, _, _, tasks = search_board
+    member = User.objects.create_user(email="reader@example.com")
+    WorkspaceMembership.objects.create(workspace=workspace, user=member, role=role)
+    board.project.status = Project.Status.ARCHIVED
+    board.project.save(update_fields=["status"])
+    client.force_login(member)
+    response = client.get(board_url(board), {"q": "طراحی", "sort": "priority_desc"})
+    assert response.status_code == 200
+    assert [task.pk for task in displayed_tasks(response)] == [tasks[0].pk, tasks[1].pk]
+    html = response.content.decode()
+    assert not response.context["can_move"]
+    assert 'draggable="true"' not in html
+    assert "/nudge/" not in html
+    assert "/shift/" not in html
+    assert "/tasks/new/" not in html
+    assert "js/kanban.js" not in html
+    assert "برد و وظیفه‌ها فقط قابل مشاهده‌اند." in html
+
+
+def test_filter_requests_preserve_authentication_scope_and_method_contracts(client, search_board):
+    board, *_ = search_board
+    url = board_url(board)
+    params = {"priority": "invalid"}
+    assert client.head(url, params).status_code == 200
+    missing = reverse("boards:detail", args=["missing", 999999])
+    for target in [url, missing]:
+        for method in ["post", "put", "patch", "delete", "options"]:
+            response = getattr(client, method)(target, params)
+            assert response.status_code == 405
+            assert response.headers["Allow"] == "GET, HEAD"
+    outsider = User.objects.create_user(email="outsider@example.com")
+    client.force_login(outsider)
+    assert client.get(url, params).status_code == 404
+    client.logout()
+    response = client.get(url, params)
+    assert response.status_code == 302
+    assert reverse("accounts:login") in response.url
+
+
+@pytest.mark.parametrize("params", [{}, {"q": "api", "sort": "priority_desc"}])
+def test_board_query_count_does_not_grow_with_columns_tasks_or_assignees(
+    client, search_board, params
+):
+    board, workspace, _, _, _ = search_board
+    with CaptureQueriesContext(connection) as small:
+        assert client.get(board_url(board), params).status_code == 200
+    columns = BoardColumn.objects.bulk_create(
+        [BoardColumn(board=board, name=f"Column {index}", position=index) for index in range(3, 8)]
+    )
+    for index, column in enumerate(columns):
+        user = User.objects.create_user(email=f"assignee-{index}@example.com")
+        WorkspaceMembership.objects.create(
+            workspace=workspace, user=user, role=WorkspaceMembership.Role.MEMBER
+        )
+        Task.objects.bulk_create(
+            [
+                Task(column=column, title=f"API task {position}", position=position, assignee=user)
+                for position in range(20)
+            ]
+        )
+    with CaptureQueriesContext(connection) as large:
+        response = client.get(board_url(board), params)
+        assert response.status_code == 200
+    assert len(large) == len(small)
+    assert len(displayed_tasks(response)) >= 100
