@@ -23,9 +23,9 @@
             {% if task.description %}{{ task.description|linebreaks }}{% else %}<p class="muted">برای این وظیفه توضیحی ثبت نشده است.</p>{% endif %}
         </div>
         <dl class="project-meta task-meta">
-            <div><dt>مسئول</dt><dd>{{ task.assignee.profile.full_name|default:task.assignee.email|default:"تعیین نشده" }}</dd></div>
+            <div><dt>مسئول</dt><dd>{% if task.assignee %}{{ task.assignee.profile.full_name|default:task.assignee.email }}{% else %}تعیین نشده{% endif %}</dd></div>
             <div><dt>سررسید</dt><dd>{{ task.due_date|date:"Y/m/d"|default:"تعیین نشده" }}</dd></div>
-            <div><dt>سازنده</dt><dd>{{ task.creator.profile.full_name|default:task.creator.email|default:"کاربر حذف‌شده" }}</dd></div>
+            <div><dt>سازنده</dt><dd>{% if task.creator %}{{ task.creator.profile.full_name|default:task.creator.email }}{% else %}کاربر حذف‌شده{% endif %}</dd></div>
             <div><dt>آخرین تغییر</dt><dd>{{ task.updated_at|date:"Y/m/d H:i" }}</dd></div>
         </dl>
     </article>
@@ -60,7 +60,7 @@
                     <article class="comment-item">
                         <header>
                             <div>
-                                <strong>{{ comment.author.profile.full_name|default:comment.author.email|default:"کاربر حذف‌شده" }}</strong>
+                                <strong>{% if comment.author %}{{ comment.author.profile.full_name|default:comment.author.email }}{% else %}کاربر حذف‌شده{% endif %}</strong>
                                 <time datetime="{{ comment.created_at|date:'c' }}">{{ comment.created_at|date:"Y/m/d H:i" }}</time>
                                 {% if comment.updated_at != comment.created_at %}<span class="muted">· ویرایش‌شده</span>{% endif %}
                             </div>
@@ -102,7 +102,7 @@
                     <li class="activity-item">
                         <span class="activity-marker" aria-hidden="true"></span>
                         <div>
-                            <p><strong>{{ activity.actor.profile.full_name|default:activity.actor.email|default:"کاربر حذف‌شده" }}</strong> {{ activity.get_event_type_display }}</p>
+                            <p><strong>{% if activity.actor %}{{ activity.actor.profile.full_name|default:activity.actor.email }}{% else %}کاربر حذف‌شده{% endif %}</strong> {{ activity.get_event_type_display }}</p>
                             {% if activity.event_type == 'task_moved' %}
                                 <p class="muted">از «{{ activity.metadata.from_column_name }}» جایگاه {{ activity.metadata.from_position|add:1 }} به «{{ activity.metadata.to_column_name }}» جایگاه {{ activity.metadata.to_position|add:1 }}</p>
                             {% endif %}

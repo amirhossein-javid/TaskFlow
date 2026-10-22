@@ -685,7 +685,10 @@ def test_comment_endpoints_enforce_methods_and_csrf(context):
     )
 
     assert client.get(create_url).status_code == 405
-    assert client.put(create_url, {"body": "Blocked"}).status_code == 405
     assert client.post(create_url, {"body": "Blocked"}).status_code == 403
-    assert client.put(edit_url, {"body": "Blocked"}).status_code == 405
     assert client.post(edit_url, {"body": "Blocked"}).status_code == 403
+
+    method_client = Client()
+    method_client.force_login(context["member"])
+    assert method_client.put(create_url, {"body": "Blocked"}).status_code == 405
+    assert method_client.put(edit_url, {"body": "Blocked"}).status_code == 405
