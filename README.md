@@ -67,7 +67,7 @@ Board assignee filters fall back to email if a legacy User unexpectedly lacks a 
 
 ## Run tests
 
-The test suite uses the PostgreSQL service from Docker Compose and enforces at least 85% application coverage. It includes regression tests for permissions, filtering, profile lifecycle, and concurrent ordering and repair operations:
+The test suite uses the PostgreSQL service from Docker Compose and enforces at least 85% application coverage. It includes regression tests for permissions, filtering, profile lifecycle, labels, checklists, and concurrent ordering, label assignment/deletion, checklist completion, and profile repair operations:
 
 ```powershell
 docker compose run --rm web sh -c "pip install -r requirements/development.txt && pytest"
@@ -130,7 +130,7 @@ docker compose run --rm web python manage.py migrate
 
 ## Projects
 
-Every project belongs to one workspace and is visible only to that workspace's members. Owners and Admins can create, edit, archive, and restore projects. Members can view projects and collaborate on their tasks, but cannot change project settings. Archived projects remain readable and must be restored before editing project settings or changing boards, tasks, or comments.
+Every project belongs to one workspace and is visible only to that workspace's members. Owners and Admins can create, edit, archive, and restore projects. Members can view projects and collaborate on their tasks, but cannot change project settings. Archived projects remain readable and must be restored before editing project settings or changing boards, tasks, comments, labels, or checklists.
 
 Project routes are nested below their workspace at `/workspaces/<slug>/projects/`. Apply migrations after updating:
 
@@ -164,11 +164,13 @@ Task drag and drop, task move buttons, and column ordering controls are disabled
 
 ### Project labels and task checklists (Phase 7)
 
-Owners and Admins manage project-scoped labels with a fixed color palette and case-insensitive name uniqueness. Workspace members attach or detach multiple labels on tasks in the same project. Shared-label renames, color changes, and deletion do not generate per-task activity; explicit attachment and detachment do.
+Owners and Admins can create, rename, recolor, and delete project-scoped labels with a fixed color palette and case-insensitive name uniqueness within each project. All workspace roles can attach or detach multiple labels from tasks, using only labels from the task's project. Deleting a shared label removes its assignments without deleting tasks.
 
-Members collaboratively create, edit, and delete multiple checklists per task and their items, and mark items complete or reopen them. Checklists and items retain creation order, with no manual reordering. Task detail pages show controls and per-checklist progress; Kanban cards show labels and aggregated completed/total item counts. Archived projects remain read-only. Meaningful task-specific changes record transactional activity; no-op changes and cascading child deletions do not generate extra events.
+Owners, Admins, and Members can collaboratively create, edit, and delete multiple checklists per task and their items, including those created by other members. Items can be marked complete or reopened. Checklists and items retain creation order, with no manual reordering; deleting a checklist also deletes its items. Task detail pages show per-checklist progress, while Kanban cards show labels and completed/total item counts across all of a task's checklists. Archived projects keep this information visible but reject all label, assignment, and checklist changes.
 
-All writes go through scoped services. The database enforces foreign keys, valid colors, nonblank text, and unique label names and task-label pairs. Cross-project assignment is validated by the model and service; direct ORM or SQL writes that bypass services are unsupported. Feature Admin interfaces are read-only.
+Task activity records explicit label attachment/detachment and checklist or item creation, edits, completion, reopening, and deletion in the same transaction as each change. Repeated requests that leave state unchanged create no activity. Shared-label renames, color changes, and deletion do not generate per-task events, and cascading deletions do not generate extra child events.
+
+Application writes go through scoped services. The database enforces foreign keys, valid colors, nonblank text, and unique label names and task-label pairs. Cross-project assignment is validated by the model and service; direct ORM or SQL writes that bypass services are unsupported. Project label, task-label assignment, checklist, and checklist item Admin interfaces are read-only.
 
 ## Language conventions
 
