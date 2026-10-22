@@ -1,7 +1,7 @@
 import logging
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
@@ -9,16 +9,17 @@ from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views import View
+from django.views.generic import FormView, ListView, TemplateView, UpdateView
 
-from .forms import (
-    InvitationForm,
-    MembershipRoleForm,
-    WorkspaceDeleteForm,
-    WorkspaceForm,
+from .forms import InvitationForm, MembershipRoleForm, WorkspaceDeleteForm, WorkspaceForm
+from .mixins import (
+    WorkspaceAccessMixin,
+    WorkspaceManagerRequiredMixin,
+    WorkspaceOwnerRequiredMixin,
 )
 from .models import WorkspaceInvitation, WorkspaceMembership
-from .permissions import get_workspace_membership, require_manager, require_owner
+from .permissions import require_owner
 from .services import (
     InvalidInvitation,
     accept_invitation,
@@ -36,98 +37,93 @@ class InvitationDeliveryError(Exception):
     """Raised when an invitation email backend does not confirm delivery."""
 
 
-@login_required
-def workspace_list(request):
-    memberships = WorkspaceMembership.objects.filter(user=request.user).select_related("workspace")
-    return render(request, "workspaces/workspace_list.html", {"memberships": memberships})
+class WorkspaceListView(LoginRequiredMixin, ListView):
+    template_name = "workspaces/workspace_list.html"
+    context_object_name = "memberships"
+    http_method_names = ["get", "head"]
+
+    def get_queryset(self):
+        return WorkspaceMembership.objects.filter(user=self.request.user).select_related(
+            "workspace"
+        )
 
 
-@login_required
-@require_http_methods(["GET", "POST"])
-def workspace_create(request):
-    form = WorkspaceForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        workspace = create_workspace(user=request.user, **form.cleaned_data)
-        messages.success(request, "فضای کاری با موفقیت ساخته شد.")
+class WorkspaceCreateView(LoginRequiredMixin, FormView):
+    template_name = "workspaces/workspace_form.html"
+    form_class = WorkspaceForm
+    http_method_names = ["get", "post"]
+
+    def form_valid(self, form):
+        workspace = create_workspace(user=self.request.user, **form.cleaned_data)
+        messages.success(self.request, "فضای کاری با موفقیت ساخته شد.")
         return redirect("workspaces:detail", slug=workspace.slug)
-    return render(request, "workspaces/workspace_form.html", {"form": form})
 
 
-@login_required
-def workspace_detail(request, slug):
-    workspace, membership = get_workspace_membership(user=request.user, slug=slug)
-    members = workspace.memberships.select_related("user", "user__profile")
-    active_project_count = workspace.projects.filter(status="active").count()
-    return render(
-        request,
-        "workspaces/workspace_detail.html",
-        {
-            "workspace": workspace,
-            "membership": membership,
-            "members": members,
-            "active_project_count": active_project_count,
-        },
-    )
+class WorkspaceDetailView(WorkspaceAccessMixin, TemplateView):
+    template_name = "workspaces/workspace_detail.html"
+    http_method_names = ["get", "head"]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["members"] = self.workspace.memberships.select_related("user", "user__profile")
+        context["active_project_count"] = self.workspace.projects.filter(status="active").count()
+        return context
 
 
-@login_required
-def member_list(request, slug):
-    workspace, membership = get_workspace_membership(user=request.user, slug=slug)
-    members = workspace.memberships.select_related("user", "user__profile")
-    pending_invitations = workspace.invitations.filter(
-        accepted_at__isnull=True, revoked_at__isnull=True
-    )
-    return render(
-        request,
-        "workspaces/member_list.html",
-        {
-            "workspace": workspace,
-            "membership": membership,
-            "members": members,
-            "pending_invitations": pending_invitations,
-        },
-    )
+class MemberListView(WorkspaceAccessMixin, TemplateView):
+    template_name = "workspaces/member_list.html"
+    http_method_names = ["get", "head"]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["members"] = self.workspace.memberships.select_related("user", "user__profile")
+        context["pending_invitations"] = self.workspace.invitations.filter(
+            accepted_at__isnull=True,
+            revoked_at__isnull=True,
+        )
+        return context
 
 
-@login_required
-@require_http_methods(["GET", "POST"])
-def workspace_settings(request, slug):
-    workspace, membership = get_workspace_membership(user=request.user, slug=slug)
-    require_owner(membership)
-    form = WorkspaceForm(request.POST or None, instance=workspace)
-    if request.method == "POST" and form.is_valid():
-        workspace = form.save()
-        messages.success(request, "تنظیمات فضای کاری ذخیره شد.")
-        return redirect("workspaces:settings", slug=workspace.slug)
-    return render(
-        request,
-        "workspaces/workspace_settings.html",
-        {"workspace": workspace, "membership": membership, "form": form},
-    )
+class WorkspaceSettingsView(WorkspaceOwnerRequiredMixin, UpdateView):
+    form_class = WorkspaceForm
+    template_name = "workspaces/workspace_settings.html"
+    http_method_names = ["get", "post"]
+
+    def get_object(self, queryset=None):
+        return self.workspace
+
+    def form_valid(self, form):
+        self.object = form.save()
+        messages.success(self.request, "تنظیمات فضای کاری ذخیره شد.")
+        return redirect("workspaces:settings", slug=self.object.slug)
 
 
-@login_required
-@require_http_methods(["GET", "POST"])
-def invite_member(request, slug):
-    workspace, membership = get_workspace_membership(user=request.user, slug=slug)
-    require_manager(membership)
-    form = InvitationForm(request.POST or None, actor_membership=membership)
-    if request.method == "POST" and form.is_valid():
+class InviteMemberView(WorkspaceManagerRequiredMixin, FormView):
+    form_class = InvitationForm
+    template_name = "workspaces/invitation_form.html"
+    http_method_names = ["get", "post"]
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["actor_membership"] = self.membership
+        return kwargs
+
+    def form_valid(self, form):
         try:
             with transaction.atomic():
                 invitation, token = create_invitation(
-                    workspace=workspace,
-                    actor=membership,
+                    workspace=self.workspace,
+                    actor=self.membership,
                     **form.cleaned_data,
                 )
-                accept_url = request.build_absolute_uri(
+                accept_url = self.request.build_absolute_uri(
                     reverse("workspaces:invitation", kwargs={"token": token})
                 )
                 try:
                     delivered = send_mail(
-                        subject=f"دعوت به فضای کاری {workspace.name}",
+                        subject=f"دعوت به فضای کاری {self.workspace.name}",
                         message=(
-                            f"شما برای پیوستن به فضای کاری «{workspace.name}» دعوت "
+                            f"شما برای پیوستن به فضای کاری «{self.workspace.name}» دعوت "
                             "شده‌اید.\n\n"
                             "برای مشاهده و پذیرش دعوت از این پیوند استفاده کنید:\n"
                             f"{accept_url}\n\n"
@@ -143,129 +139,161 @@ def invite_member(request, slug):
                     raise InvitationDeliveryError
         except ValidationError as error:
             form.add_error("email", error)
+            return self.form_invalid(form)
         except InvitationDeliveryError:
             logger.exception(
                 "Workspace invitation email delivery failed",
-                extra={"workspace_id": workspace.pk},
+                extra={"workspace_id": self.workspace.pk},
             )
             form.add_error(
                 None,
                 "ارسال دعوت‌نامه انجام نشد. لطفاً کمی بعد دوباره تلاش کنید.",
             )
+            return self.form_invalid(form)
+        messages.success(self.request, "دعوت‌نامه با موفقیت ارسال شد.")
+        return redirect("workspaces:members", slug=self.workspace.slug)
+
+
+class ChangeRoleView(WorkspaceOwnerRequiredMixin, View):
+    http_method_names = ["post"]
+
+    def post(self, request, *args, **kwargs):
+        target = get_object_or_404(
+            WorkspaceMembership,
+            pk=kwargs["membership_id"],
+            workspace=self.workspace,
+        )
+        form = MembershipRoleForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, "نقش انتخاب‌شده معتبر نیست.")
         else:
-            messages.success(request, "دعوت‌نامه با موفقیت ارسال شد.")
-            return redirect("workspaces:members", slug=workspace.slug)
-    return render(
-        request,
-        "workspaces/invitation_form.html",
-        {"workspace": workspace, "membership": membership, "form": form},
-    )
+            try:
+                change_membership_role(
+                    actor=self.membership,
+                    target=target,
+                    role=form.cleaned_data["role"],
+                )
+            except ValidationError as error:
+                messages.error(request, error.messages[0])
+            else:
+                messages.success(request, "نقش عضو به‌روزرسانی شد.")
+        return redirect("workspaces:members", slug=self.workspace.slug)
 
 
-@login_required
-@require_POST
-def change_role(request, slug, membership_id):
-    workspace, actor = get_workspace_membership(user=request.user, slug=slug)
-    require_owner(actor)
-    target = get_object_or_404(WorkspaceMembership, pk=membership_id, workspace=workspace)
-    form = MembershipRoleForm(request.POST)
-    if not form.is_valid():
-        messages.error(request, "نقش انتخاب‌شده معتبر نیست.")
-    else:
+class RemoveMemberView(WorkspaceManagerRequiredMixin, View):
+    template_name = "workspaces/member_remove_confirm.html"
+    http_method_names = ["get", "post"]
+
+    def get_target(self):
+        if not hasattr(self, "target"):
+            self.target = get_object_or_404(
+                WorkspaceMembership.objects.select_related("user", "user__profile"),
+                pk=self.kwargs["membership_id"],
+                workspace=self.workspace,
+            )
+            if (
+                self.membership.role == WorkspaceMembership.Role.ADMIN
+                and self.target.role != WorkspaceMembership.Role.MEMBER
+            ):
+                raise PermissionDenied("مدیران فقط می‌توانند اعضای عادی را حذف کنند.")
+        return self.target
+
+    def get(self, request, *args, **kwargs):
+        return render(
+            request,
+            self.template_name,
+            {
+                "workspace": self.workspace,
+                "membership": self.membership,
+                "target": self.get_target(),
+            },
+        )
+
+    def post(self, request, *args, **kwargs):
         try:
-            change_membership_role(actor=actor, target=target, role=form.cleaned_data["role"])
-        except ValidationError as error:
-            messages.error(request, error.messages[0])
-        else:
-            messages.success(request, "نقش عضو به‌روزرسانی شد.")
-    return redirect("workspaces:members", slug=workspace.slug)
-
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def remove_member(request, slug, membership_id):
-    workspace, actor = get_workspace_membership(user=request.user, slug=slug)
-    require_manager(actor)
-    target = get_object_or_404(
-        WorkspaceMembership.objects.select_related("user", "user__profile"),
-        pk=membership_id,
-        workspace=workspace,
-    )
-    if (
-        actor.role == WorkspaceMembership.Role.ADMIN
-        and target.role != WorkspaceMembership.Role.MEMBER
-    ):
-        raise PermissionDenied("مدیران فقط می‌توانند اعضای عادی را حذف کنند.")
-    if request.method == "POST":
-        try:
-            remove_membership(actor=actor, target=target)
+            remove_membership(actor=self.membership, target=self.get_target())
         except ValidationError as error:
             messages.error(request, error.messages[0])
         else:
             messages.success(request, "عضو از فضای کاری حذف شد.")
-        return redirect("workspaces:members", slug=workspace.slug)
-    return render(
-        request,
-        "workspaces/member_remove_confirm.html",
-        {"workspace": workspace, "membership": actor, "target": target},
-    )
+        return redirect("workspaces:members", slug=self.workspace.slug)
 
 
-@login_required
-@require_http_methods(["GET", "POST"])
-def workspace_leave(request, slug):
-    workspace, membership = get_workspace_membership(user=request.user, slug=slug)
-    if request.method == "POST":
+class WorkspaceLeaveView(WorkspaceAccessMixin, View):
+    template_name = "workspaces/workspace_leave_confirm.html"
+    http_method_names = ["get", "post"]
+
+    def get(self, request, *args, **kwargs):
+        return render(
+            request,
+            self.template_name,
+            {"workspace": self.workspace, "membership": self.membership},
+        )
+
+    def post(self, request, *args, **kwargs):
         try:
-            leave_workspace(membership=membership)
+            leave_workspace(membership=self.membership)
         except ValidationError as error:
             messages.error(request, error.messages[0])
-            return redirect("workspaces:detail", slug=workspace.slug)
+            return redirect("workspaces:detail", slug=self.workspace.slug)
         messages.success(request, "از فضای کاری خارج شدید.")
         return redirect("workspaces:list")
-    return render(
-        request,
-        "workspaces/workspace_leave_confirm.html",
-        {"workspace": workspace, "membership": membership},
-    )
 
 
-@login_required
-@require_http_methods(["GET", "POST"])
-def workspace_delete(request, slug):
-    workspace, membership = get_workspace_membership(user=request.user, slug=slug)
-    require_owner(membership)
-    form = WorkspaceDeleteForm(request.POST or None, workspace=workspace)
-    if request.method == "POST" and form.is_valid():
+class WorkspaceDeleteView(WorkspaceOwnerRequiredMixin, FormView):
+    form_class = WorkspaceDeleteForm
+    template_name = "workspaces/workspace_delete_confirm.html"
+    http_method_names = ["get", "post"]
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["workspace"] = self.workspace
+        return kwargs
+
+    def form_valid(self, form):
         with transaction.atomic():
             locked_membership = WorkspaceMembership.objects.select_for_update().get(
-                workspace=workspace, user=request.user
+                workspace=self.workspace,
+                user=self.request.user,
             )
             require_owner(locked_membership)
-            workspace.delete()
-        messages.success(request, "فضای کاری برای همیشه حذف شد.")
+            self.workspace.delete()
+        messages.success(self.request, "فضای کاری برای همیشه حذف شد.")
         return redirect("workspaces:list")
-    return render(
-        request,
-        "workspaces/workspace_delete_confirm.html",
-        {"workspace": workspace, "membership": membership, "form": form},
-    )
 
 
-@require_http_methods(["GET", "POST"])
-def invitation_detail(request, token):
-    invitation = (
-        WorkspaceInvitation.objects.select_related("workspace")
-        .filter(token_hash=WorkspaceInvitation.digest_token(token))
-        .first()
-    )
-    if not invitation:
-        raise Http404
-    if request.method == "POST":
+class InvitationDetailView(View):
+    template_name = "workspaces/invitation_detail.html"
+    http_method_names = ["get", "post"]
+
+    def get_invitation(self):
+        invitation = (
+            WorkspaceInvitation.objects.select_related("workspace")
+            .filter(token_hash=WorkspaceInvitation.digest_token(self.kwargs["token"]))
+            .first()
+        )
+        if not invitation:
+            raise Http404
+        return invitation
+
+    def render_invitation(self, request):
+        invitation = self.get_invitation()
+        return render(
+            request,
+            self.template_name,
+            {"invitation": invitation, "token": self.kwargs["token"]},
+            status=200 if invitation.is_pending else 410,
+        )
+
+    def get(self, request, *args, **kwargs):
+        return self.render_invitation(request)
+
+    def post(self, request, *args, **kwargs):
+        self.get_invitation()
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
         try:
-            membership = accept_invitation(token=token, user=request.user)
+            membership = accept_invitation(token=kwargs["token"], user=request.user)
         except PermissionDenied:
             messages.error(request, "این دعوت‌نامه برای ایمیل حساب فعلی شما صادر نشده است.")
         except InvalidInvitation:
@@ -273,9 +301,4 @@ def invitation_detail(request, token):
         else:
             messages.success(request, "با موفقیت به فضای کاری پیوستید.")
             return redirect("workspaces:detail", slug=membership.workspace.slug)
-    return render(
-        request,
-        "workspaces/invitation_detail.html",
-        {"invitation": invitation, "token": token},
-        status=200 if invitation.is_pending else 410,
-    )
+        return self.render_invitation(request)

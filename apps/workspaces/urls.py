@@ -1,27 +1,39 @@
 from django.urls import path
 
-from . import views
+from .views import (
+    ChangeRoleView,
+    InvitationDetailView,
+    InviteMemberView,
+    MemberListView,
+    RemoveMemberView,
+    WorkspaceCreateView,
+    WorkspaceDeleteView,
+    WorkspaceDetailView,
+    WorkspaceLeaveView,
+    WorkspaceListView,
+    WorkspaceSettingsView,
+)
 
 app_name = "workspaces"
 
 urlpatterns = [
-    path("", views.workspace_list, name="list"),
-    path("new/", views.workspace_create, name="create"),
-    path("invitations/<str:token>/", views.invitation_detail, name="invitation"),
-    path("<slug:slug>/", views.workspace_detail, name="detail"),
-    path("<slug:slug>/members/", views.member_list, name="members"),
-    path("<slug:slug>/members/invite/", views.invite_member, name="invite"),
+    path("", WorkspaceListView.as_view(), name="list"),
+    path("new/", WorkspaceCreateView.as_view(), name="create"),
+    path("invitations/<str:token>/", InvitationDetailView.as_view(), name="invitation"),
+    path("<slug:slug>/", WorkspaceDetailView.as_view(), name="detail"),
+    path("<slug:slug>/members/", MemberListView.as_view(), name="members"),
+    path("<slug:slug>/members/invite/", InviteMemberView.as_view(), name="invite"),
     path(
         "<slug:slug>/members/<int:membership_id>/role/",
-        views.change_role,
+        ChangeRoleView.as_view(),
         name="change_role",
     ),
     path(
         "<slug:slug>/members/<int:membership_id>/remove/",
-        views.remove_member,
+        RemoveMemberView.as_view(),
         name="remove_member",
     ),
-    path("<slug:slug>/settings/", views.workspace_settings, name="settings"),
-    path("<slug:slug>/leave/", views.workspace_leave, name="leave"),
-    path("<slug:slug>/delete/", views.workspace_delete, name="delete"),
+    path("<slug:slug>/settings/", WorkspaceSettingsView.as_view(), name="settings"),
+    path("<slug:slug>/leave/", WorkspaceLeaveView.as_view(), name="leave"),
+    path("<slug:slug>/delete/", WorkspaceDeleteView.as_view(), name="delete"),
 ]
