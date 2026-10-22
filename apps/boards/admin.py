@@ -1,6 +1,16 @@
 from django.contrib import admin
 
-from .models import Board, BoardColumn, ProjectLabel, Task, TaskActivity, TaskComment, TaskLabel
+from .models import (
+    Board,
+    BoardColumn,
+    ChecklistItem,
+    ProjectLabel,
+    Task,
+    TaskActivity,
+    TaskChecklist,
+    TaskComment,
+    TaskLabel,
+)
 
 
 class ReadOnlyAdminMixin:
@@ -50,6 +60,16 @@ class ProjectLabelAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 @admin.register(TaskLabel)
 class TaskLabelAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ("task", "label")
+
+
+@admin.register(TaskChecklist)
+class TaskChecklistAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ("title", "task", "created_at")
+
+
+@admin.register(ChecklistItem)
+class ChecklistItemAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ("text", "checklist", "is_completed")
 
 
 @admin.register(TaskComment)

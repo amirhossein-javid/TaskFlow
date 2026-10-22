@@ -3,7 +3,27 @@ from django.db.models import Q
 
 from apps.accounts.models import User
 
-from .models import BoardColumn, ProjectLabel, Task, TaskComment
+from .models import BoardColumn, ChecklistItem, ProjectLabel, Task, TaskChecklist, TaskComment
+
+
+class TaskChecklistForm(forms.ModelForm):
+    class Meta:
+        model = TaskChecklist
+        fields = ("title",)
+
+
+class ChecklistItemForm(forms.ModelForm):
+    class Meta:
+        model = ChecklistItem
+        fields = ("text",)
+
+
+class ChecklistItemStateForm(forms.Form):
+    completed = forms.TypedChoiceField(
+        label="وضعیت",
+        choices=[("true", "انجام‌شده"), ("false", "انجام‌نشده")],
+        coerce=lambda value: value == "true",
+    )
 
 
 class ProjectLabelForm(forms.ModelForm):

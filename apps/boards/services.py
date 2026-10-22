@@ -5,9 +5,195 @@ from django.db.models import F
 from apps.projects.models import Project
 from apps.workspaces.models import WorkspaceMembership
 
-from .models import Board, BoardColumn, ProjectLabel, Task, TaskActivity, TaskComment, TaskLabel
+from .models import (
+    Board,
+    BoardColumn,
+    ChecklistItem,
+    ProjectLabel,
+    Task,
+    TaskActivity,
+    TaskChecklist,
+    TaskComment,
+    TaskLabel,
+)
 
 POSITION_OFFSET = 1_000_000
+
+
+def _locked_checklist(*, checklist_id, task):
+    checklist = TaskChecklist.objects.select_for_update().filter(pk=checklist_id, task=task).first()
+    if checklist is None:
+        raise ValidationError("چک‌لیست موردنظر پیدا نشد.")
+    return checklist
+
+
+def _locked_checklist_item(*, item_id, checklist):
+    item = ChecklistItem.objects.select_for_update().filter(pk=item_id, checklist=checklist).first()
+    if item is None:
+        raise ValidationError("مورد چک‌لیست پیدا نشد.")
+    return item
+
+
+@transaction.atomic
+def create_checklist(*, task: Task, actor: WorkspaceMembership, title: str):
+    project, task, actor = _locked_task_context(task=task, actor=actor)
+    checklist = TaskChecklist(task=task, title=title.strip())
+    checklist.full_clean()
+    checklist.save()
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=TaskActivity.EventType.CHECKLIST_CREATED,
+        metadata={"checklist_id": checklist.pk, "checklist_title": checklist.title},
+    )
+    return checklist
+
+
+@transaction.atomic
+def update_checklist(*, checklist: TaskChecklist, actor: WorkspaceMembership, title: str):
+    project, task, actor = _locked_task_context(task=checklist.task, actor=actor)
+    checklist = _locked_checklist(checklist_id=checklist.pk, task=task)
+    title = title.strip()
+    if checklist.title == title:
+        return checklist
+    previous = checklist.title
+    checklist.title = title
+    checklist.full_clean()
+    checklist.save(update_fields=["title"])
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=TaskActivity.EventType.CHECKLIST_UPDATED,
+        metadata={
+            "checklist_id": checklist.pk,
+            "checklist_title": title,
+            "previous_title": previous,
+        },
+    )
+    return checklist
+
+
+@transaction.atomic
+def delete_checklist(*, checklist: TaskChecklist, actor: WorkspaceMembership):
+    project, task, actor = _locked_task_context(task=checklist.task, actor=actor)
+    checklist = _locked_checklist(checklist_id=checklist.pk, task=task)
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=TaskActivity.EventType.CHECKLIST_DELETED,
+        metadata={
+            "checklist_id": checklist.pk,
+            "checklist_title": checklist.title,
+            "item_count": checklist.items.count(),
+        },
+    )
+    checklist.delete()
+
+
+@transaction.atomic
+def create_checklist_item(*, checklist: TaskChecklist, actor: WorkspaceMembership, text: str):
+    project, task, actor = _locked_task_context(task=checklist.task, actor=actor)
+    checklist = _locked_checklist(checklist_id=checklist.pk, task=task)
+    item = ChecklistItem(checklist=checklist, text=text.strip())
+    item.full_clean()
+    item.save()
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=TaskActivity.EventType.ITEM_CREATED,
+        metadata={
+            "checklist_id": checklist.pk,
+            "checklist_title": checklist.title,
+            "item_id": item.pk,
+            "item_text": item.text,
+        },
+    )
+    return item
+
+
+@transaction.atomic
+def update_checklist_item(*, item: ChecklistItem, actor: WorkspaceMembership, text: str):
+    project, task, actor = _locked_task_context(task=item.checklist.task, actor=actor)
+    checklist = _locked_checklist(checklist_id=item.checklist_id, task=task)
+    item = _locked_checklist_item(item_id=item.pk, checklist=checklist)
+    text = text.strip()
+    if item.text == text:
+        return item
+    previous = item.text
+    item.text = text
+    item.full_clean()
+    item.save(update_fields=["text"])
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=TaskActivity.EventType.ITEM_UPDATED,
+        metadata={
+            "checklist_id": checklist.pk,
+            "checklist_title": checklist.title,
+            "item_id": item.pk,
+            "item_text": text,
+            "previous_text": previous,
+        },
+    )
+    return item
+
+
+@transaction.atomic
+def set_checklist_item_completed(
+    *, item: ChecklistItem, actor: WorkspaceMembership, completed: bool
+):
+    if not isinstance(completed, bool):
+        raise ValidationError("وضعیت مورد معتبر نیست.")
+    project, task, actor = _locked_task_context(task=item.checklist.task, actor=actor)
+    checklist = _locked_checklist(checklist_id=item.checklist_id, task=task)
+    item = _locked_checklist_item(item_id=item.pk, checklist=checklist)
+    if item.is_completed == completed:
+        return item
+    item.is_completed = completed
+    item.save(update_fields=["is_completed"])
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=(
+            TaskActivity.EventType.ITEM_COMPLETED
+            if completed
+            else TaskActivity.EventType.ITEM_REOPENED
+        ),
+        metadata={
+            "checklist_id": checklist.pk,
+            "checklist_title": checklist.title,
+            "item_id": item.pk,
+            "item_text": item.text,
+            "is_completed": completed,
+        },
+    )
+    return item
+
+
+@transaction.atomic
+def delete_checklist_item(*, item: ChecklistItem, actor: WorkspaceMembership):
+    project, task, actor = _locked_task_context(task=item.checklist.task, actor=actor)
+    checklist = _locked_checklist(checklist_id=item.checklist_id, task=task)
+    item = _locked_checklist_item(item_id=item.pk, checklist=checklist)
+    _record_task_activity(
+        project=project,
+        task=task,
+        actor=actor,
+        event_type=TaskActivity.EventType.ITEM_DELETED,
+        metadata={
+            "checklist_id": checklist.pk,
+            "checklist_title": checklist.title,
+            "item_id": item.pk,
+            "item_text": item.text,
+        },
+    )
+    item.delete()
 
 
 @transaction.atomic

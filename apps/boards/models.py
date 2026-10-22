@@ -210,6 +210,61 @@ class TaskLabel(models.Model):
             raise ValidationError("برچسب باید متعلق به پروژهٔ همین وظیفه باشد.")
 
 
+class TaskChecklist(models.Model):
+    task = models.ForeignKey(
+        Task, on_delete=models.CASCADE, related_name="checklists", verbose_name=_("وظیفه")
+    )
+    title = models.CharField(_("عنوان چک‌لیست"), max_length=100)
+    created_at = models.DateTimeField(_("تاریخ ایجاد"), auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(title__regex=r"^\s*$"), name="checklist_title_not_blank"
+            )
+        ]
+        verbose_name = _("چک‌لیست")
+        verbose_name_plural = _("چک‌لیست‌ها")
+
+    def __str__(self):
+        return self.title
+
+    def clean(self):
+        super().clean()
+        self.title = self.title.strip()
+        if not self.title:
+            raise ValidationError({"title": "عنوان چک‌لیست نمی‌تواند خالی باشد."})
+
+
+class ChecklistItem(models.Model):
+    checklist = models.ForeignKey(
+        TaskChecklist, on_delete=models.CASCADE, related_name="items", verbose_name=_("چک‌لیست")
+    )
+    text = models.CharField(_("متن مورد"), max_length=300)
+    is_completed = models.BooleanField(_("انجام‌شده"), default=False)
+    created_at = models.DateTimeField(_("تاریخ ایجاد"), auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(text__regex=r"^\s*$"), name="checklist_item_text_not_blank"
+            )
+        ]
+        verbose_name = _("مورد چک‌لیست")
+        verbose_name_plural = _("موارد چک‌لیست")
+
+    def __str__(self):
+        return self.text
+
+    def clean(self):
+        super().clean()
+        self.text = self.text.strip()
+        if not self.text:
+            raise ValidationError({"text": "متن مورد نمی‌تواند خالی باشد."})
+
+
 class TaskComment(models.Model):
     task = models.ForeignKey(
         Task,
@@ -260,6 +315,14 @@ class TaskActivity(models.Model):
         TASK_DELETED = "task_deleted", _("وظیفه حذف شد")
         LABEL_ATTACHED = "label_attached", _("برچسب به وظیفه افزوده شد")
         LABEL_DETACHED = "label_detached", _("برچسب از وظیفه برداشته شد")
+        CHECKLIST_CREATED = "checklist_created", _("چک‌لیست ساخته شد")
+        CHECKLIST_UPDATED = "checklist_updated", _("چک‌لیست ویرایش شد")
+        CHECKLIST_DELETED = "checklist_deleted", _("چک‌لیست حذف شد")
+        ITEM_CREATED = "checklist_item_created", _("مورد چک‌لیست افزوده شد")
+        ITEM_UPDATED = "checklist_item_updated", _("مورد چک‌لیست ویرایش شد")
+        ITEM_COMPLETED = "checklist_item_completed", _("مورد چک‌لیست انجام شد")
+        ITEM_REOPENED = "checklist_item_reopened", _("مورد چک‌لیست بازگشایی شد")
+        ITEM_DELETED = "checklist_item_deleted", _("مورد چک‌لیست حذف شد")
 
     project = models.ForeignKey(
         Project,
