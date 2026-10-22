@@ -40,6 +40,7 @@ def test_create_superuser_sets_required_flags_and_creates_profile():
     assert user.is_superuser is True
     assert user.is_active is True
     assert user.profile.user == user
+    assert Profile.objects.filter(user=user).count() == 1
 
 
 @pytest.mark.django_db
@@ -52,6 +53,7 @@ def test_createsuperuser_command_creates_profile(monkeypatch):
     user = User.objects.get(email="command-admin@example.com")
     assert user.check_password("secure-password") is True
     assert user.profile.user_id == user.pk
+    assert Profile.objects.filter(user=user).count() == 1
 
 
 @pytest.mark.django_db

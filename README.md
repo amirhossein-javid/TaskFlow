@@ -40,6 +40,30 @@ The accounts application provides:
 
 The main account routes are under `/accounts/`. Development password-reset emails are written to the console by default.
 
+Standard individual user-creation paths (registration, Admin, `create_user()`,
+`create_superuser()`, `createsuperuser`, and normal model saves) create exactly one
+Profile through the existing `post_save` signal. The one-to-one constraint prevents
+duplicate profiles. Profile deletion is blocked for direct instance and QuerySet
+deletes and in Admin; deleting the owning User still cascades to its Profile.
+An existing Profile's owner cannot be reassigned in Admin.
+
+Repair missing profiles in an existing database with:
+
+```powershell
+docker compose run --rm web python manage.py repair_profiles
+```
+
+The command is idempotent, locks each User while repairing it, and leaves all valid
+Profiles unchanged, including names, biographies, avatars, and creation dates.
+It is safe to rerun after an interruption.
+
+Django's `bulk_create()` bypasses model saves and signals. Importers that use it
+must explicitly create the corresponding Profiles, preferably in the same
+transaction. Raw fixture loads also skip automatic profile creation. Use
+`repair_profiles` after legacy imports when needed. Direct SQL and low-level
+operations that bypass these application safeguards remain the caller's
+responsibility; there is no database-level guarantee that every User has a Profile.
+
 ## Run tests
 
 The test suite uses the PostgreSQL service from Docker Compose:
@@ -90,8 +114,6 @@ Production email delivery uses Django's SMTP backend by default. Configure these
 - `DJANGO_DEFAULT_FROM_EMAIL`
 
 Set `DJANGO_EMAIL_BACKEND` only when a different Django email backend is required.
-
-Standard Django user-creation paths automatically create the related Profile. Django does not emit model signals for `bulk_create()`, so callers that use it must create the corresponding profiles explicitly in bulk.
 
 ## Workspaces and invitations
 

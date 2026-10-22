@@ -12,6 +12,7 @@ from django.utils.http import urlsafe_base64_encode
 from PIL import Image
 
 from apps.accounts.forms import ProfileForm
+from apps.accounts.models import Profile
 
 User = get_user_model()
 PASSWORD = "StrongPass!2026Task"
@@ -50,6 +51,7 @@ def test_registration_creates_user_and_populates_profile(client):
     user = User.objects.get(email="newuser@example.com")
     assert user.check_password(PASSWORD) is True
     assert user.profile.full_name == "کاربر جدید"
+    assert Profile.objects.filter(user=user).count() == 1
 
 
 @pytest.mark.django_db

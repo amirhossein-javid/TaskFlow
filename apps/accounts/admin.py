@@ -17,6 +17,12 @@ class UserAdmin(BaseUserAdmin):
     filter_horizontal = ("groups", "user_permissions")
     readonly_fields = ("date_joined", "last_login")
 
+    def get_deleted_objects(self, objs, request):
+        deleted, counts, permissions, protected = super().get_deleted_objects(objs, request)
+        # Profiles cannot be deleted independently, but must cascade with their users.
+        permissions.discard(Profile._meta.verbose_name)
+        return deleted, counts, permissions, protected
+
     fieldsets = (
         (None, {"fields": ("email", "password")}),
         (
@@ -49,3 +55,10 @@ class ProfileAdmin(admin.ModelAdmin):
     list_display = ("user", "full_name", "created_at")
     search_fields = ("user__email", "full_name")
     readonly_fields = ("created_at",)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        return (*fields, "user") if obj else fields
