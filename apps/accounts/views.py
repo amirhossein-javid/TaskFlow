@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import IntegrityError, transaction
@@ -18,7 +20,7 @@ class RegistrationView(FormView):
 
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated:
-            return redirect("accounts:profile")
+            return redirect(self.get_next_url() or "accounts:profile")
         return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
@@ -33,14 +35,26 @@ class RegistrationView(FormView):
         messages.success(self.request, "حساب کاربری شما ساخته شد. اکنون وارد شوید.")
         return super().form_valid(form)
 
-    def get_success_url(self):
+    def get_next_url(self):
         next_url = self.request.POST.get("next") or self.request.GET.get("next")
         if next_url and url_has_allowed_host_and_scheme(
             next_url,
             allowed_hosts={self.request.get_host()},
             require_https=self.request.is_secure(),
         ):
-            return f"{reverse('accounts:login')}?next={next_url}"
+            return next_url
+        return ""
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["next"] = self.get_next_url()
+        return context
+
+    def get_success_url(self):
+        next_url = self.get_next_url()
+        if next_url:
+            query = urlencode({"next": next_url}, safe="/")
+            return f"{reverse('accounts:login')}?{query}"
         return str(self.success_url)
 
 

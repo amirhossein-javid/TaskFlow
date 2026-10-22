@@ -108,6 +108,18 @@ python manage.py runserver
 pytest
 ```
 
+Kanban drag cancellation and failed-save regression tests use Node.js 18+ and its
+built-in test runner, without extra npm dependencies:
+
+```powershell
+node --test apps/boards/tests/kanban.test.cjs
+```
+
+These event-handler tests cover same-column and cross-column cancellation,
+rejected/network/non-JSON responses after `dragend`, and overlapping-save prevention.
+Failed saves restore the last known persisted position immediately, then refresh
+the board because a lost response may follow a committed server write.
+
 ## Code quality
 
 Run Ruff after installing the development dependencies:
@@ -148,6 +160,10 @@ Set `DJANGO_EMAIL_BACKEND` only when a different Django email backend is require
 Authenticated users can create multiple workspaces under `/workspaces/`. Workspace access is controlled by Owner, Admin, and Member roles. Owners manage roles and workspace settings, while Owners and Admins can invite and remove eligible members.
 
 Invitation links are single-use, expire after seven days by default, and can only be accepted by a signed-in account with the invited email address. Set `WORKSPACE_INVITATION_EXPIRY_DAYS` to change the lifetime. Email delivery reuses the `DJANGO_EMAIL_*` configuration described above; development writes invitations to the console.
+
+Invitation destinations survive navigation between login and registration,
+registration validation errors, and switching away from an incorrect account.
+Redirect targets continue to use Django's host and HTTPS safety checks.
 
 Apply the workspace schema migration after updating:
 

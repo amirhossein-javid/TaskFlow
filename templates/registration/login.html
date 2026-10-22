@@ -28,7 +28,7 @@
             <div class="form-meta"><a href="{% url 'accounts:password_reset' %}">رمز عبور را فراموش کرده‌اید؟</a></div>
             <button class="button button-block button-large" type="submit">ورود به TaskFlow <span aria-hidden="true">←</span></button>
         </form>
-        <p class="auth-footer">هنوز حساب ندارید؟ <a href="{% url 'accounts:register' %}">حساب رایگان بسازید</a></p>
+        <p class="auth-footer">هنوز حساب ندارید؟ <a href="{% url 'accounts:register' %}{% if next %}?next={{ next|urlencode }}{% endif %}">حساب رایگان بسازید</a></p>
     </section>
 </div>
 {% endblock %}
