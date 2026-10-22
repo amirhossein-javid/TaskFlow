@@ -67,7 +67,7 @@ Board assignee filters fall back to email if a legacy User unexpectedly lacks a 
 
 ## Run tests
 
-The test suite uses the PostgreSQL service from Docker Compose and enforces at least 85% application coverage. It includes regression tests for permissions, filtering, profile lifecycle, labels, checklists, and concurrent ordering, label assignment/deletion, checklist completion, and profile repair operations:
+The test suite uses the PostgreSQL service from Docker Compose and enforces at least 85% application coverage. It covers permissions, filtering, profile lifecycle, labels, checklists, notifications, and PostgreSQL concurrency scenarios, including reciprocal comments across projects and competing read-state updates:
 
 ```powershell
 docker compose run --rm web sh -c "pip install -r requirements/development.txt && pytest"
@@ -174,9 +174,11 @@ Application writes go through scoped services. The database enforces foreign key
 
 ### In-app notifications (Phase 8)
 
-Workspace members receive notifications when another user assigns them a task, comments on their assigned task, or moves it to a different column. Self-actions, no-op changes, and reordering within a column do not notify. Notifications are recorded in the same transaction as the task change and its activity event.
+The current assignee receives a notification when another user assigns them a task (including at creation), adds a new comment, or moves the task to a different column. Recipients must be active users with current workspace membership. Self-actions, no-op changes, comment edits, and reordering within a column do not notify. Notifications are recorded in the same transaction as the task change and its activity event, with at most one notification per recipient/activity pair.
 
-The paginated inbox at `/notifications/` supports unread filtering, marking individual notifications read or unread, and marking all visible notifications read. The navigation bell shows the unread count on each page request; there is no polling or external delivery. Notifications and links require current task access. Leaving a workspace hides its notifications; rejoining makes retained notifications accessible again. Archived projects remain readable, including notification read-state controls.
+The inbox at `/notifications/` shows the newest notifications first, with 20 per page and an unread-only filter. Users can mark individual notifications read or unread, or mark all visible notifications read. These operations use CSRF-protected POST requests and are idempotent; opening the inbox or a task does not mark notifications read. The navigation bell refreshes its unread count when a page loads or is refreshed; there is no polling, live delivery, or notification email.
+
+The inbox, unread count, and read-state operations are scoped to the recipient and current task access. Task links use the existing permission checks. Leaving a workspace hides its notifications; rejoining makes retained notifications accessible again. Archived projects remain readable, including notification read-state controls.
 
 Deleting a task, project, or recipient removes the corresponding notifications. There is no automatic retention policy. Notification Admin is read-only.
 

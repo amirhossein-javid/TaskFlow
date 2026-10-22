@@ -15,7 +15,7 @@
 - Python 3.12+, Django 5.2, PostgreSQL, Django Templates, vanilla CSS/JavaScript.
 - Docker Compose provides `web` and private `db` services; Gunicorn and WhiteNoise serve the app.
 - `config/settings/` contains shared, development, and production settings.
-- Domain apps live in `apps/accounts`, `apps/workspaces`, `apps/projects`, and `apps/boards`.
+- Domain apps live in `apps/accounts`, `apps/workspaces`, `apps/projects`, `apps/boards`, and `apps/notifications`.
 - Shared templates are under `templates/`; source static assets are under `static/`.
 - Tests use pytest, pytest-django, pytest-cov, and a real PostgreSQL database.
 - Development tooling is configured in `pyproject.toml`, `pytest.ini`, and `.pre-commit-config.yaml`.
@@ -49,12 +49,18 @@
 - Keep multi-row invariants inside `transaction.atomic()` and use `select_for_update()` as established.
 - Workspace owner-safety operations lock the workspace, then all memberships ordered by primary key.
 - Board mutations lock project, board, actor membership, then affected child rows.
+- Keep actor membership locks scoped with `select_for_update(of=("self",))` when joining User.
+  Review joined lock targets: unintended User locks conflict with recipient FK `KEY SHARE` checks.
 - Board-wide ordering locks columns by primary key before tasks by primary key.
 - Comment writes lock the task before the comment; never introduce inverse lock acquisition.
 - Preserve dense `(board, position)` and `(column, position)` ordering and their unique constraints.
 - Re-read ordering state after locks; do not calculate moves from stale request-time model instances.
 - Add PostgreSQL concurrency tests for changes to locking, ordering, or last-owner invariants.
 - Concurrency tests use `transaction=True`, separate connections, barriers, and bounded timeouts.
+- Cover cross-project reciprocal actors/recipients through commit when testing notification locks;
+  deferred FK checks run at commit and same-project serialization can hide deadlocks.
+- Keep current-state predicates for conditional read-state updates on the UPDATE target, outside
+  authorization subqueries, so PostgreSQL rechecks them after concurrent row-lock waits.
 
 ## Tasks, comments, and activity
 
@@ -66,6 +72,12 @@
 - Task deletion preserves activity through the nullable task relation and stored task title.
 - Comment deletion follows task cascade behavior; deleted users remain representable through nullable actors.
 - Task, comment, and activity Admin interfaces are intentionally read-only.
+- Create notifications explicitly in the same service transaction as the task change and source
+  `TaskActivity`; require active recipients with current task access, exclude self-notifications,
+  and preserve recipient/activity uniqueness.
+- Use `Notification.objects.visible_to(user)` for inboxes, unread counts, and read-state writes.
+  Preserve current task authorization after membership changes; archived projects allow personal
+  notification read-state changes without permitting domain mutations.
 
 ## Templates and frontend
 
@@ -84,7 +96,7 @@
 - Full PostgreSQL suite:
   `docker compose run --rm web sh -c "pip install -r requirements/development.txt && pytest"`
 - Concurrency suite:
-  `docker compose run --rm web sh -c "pip install -r requirements/development.txt && pytest apps/boards/tests/test_concurrency.py apps/workspaces/tests/test_concurrency.py --no-cov"`
+  `docker compose run --rm web sh -c "pip install -r requirements/development.txt && pytest apps -k concurrency --no-cov"`
 - Django checks: `python manage.py check`
 - Migration drift: `python manage.py makemigrations --check --dry-run`
 - Apply committed migrations against PostgreSQL with `python manage.py migrate` when required.
