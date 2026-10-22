@@ -3,7 +3,7 @@ from django.shortcuts import get_object_or_404
 from apps.projects.mixins import ProjectAccessMixin
 from apps.workspaces.permissions import require_manager
 
-from .models import BoardColumn, Task
+from .models import BoardColumn, Task, TaskComment
 
 
 class BoardAccessMixin(ProjectAccessMixin):
@@ -33,6 +33,20 @@ class BoardAccessMixin(ProjectAccessMixin):
             ),
             pk=task_id or self.kwargs["task_id"],
             column__board=self.board,
+        )
+
+    def get_comment(self, comment_id=None, task=None):
+        queryset = TaskComment.objects.select_related(
+            "task",
+            "task__column",
+            "author",
+            "author__profile",
+        ).filter(task__column__board=self.board)
+        if task is not None:
+            queryset = queryset.filter(task=task)
+        return get_object_or_404(
+            queryset,
+            pk=comment_id or self.kwargs["comment_id"],
         )
 
     def get_context_data(self, **kwargs):

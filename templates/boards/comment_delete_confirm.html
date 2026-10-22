@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}حذف دیدگاه | TaskFlow{% endblock %}
+
+{% block content %}
+<section class="workspace-page page-width narrow-page">
+    <a class="back-link" href="{% url 'boards:task_detail' workspace.slug project.pk task.pk %}">→ بازگشت به وظیفه</a>
+    <article class="form-card confirmation-card">
+        <p class="eyebrow">{{ task.title }}</p>
+        <h1>حذف دیدگاه</h1>
+        <p>این دیدگاه برای همیشه حذف می‌شود. آیا مطمئن هستید؟</p>
+        <blockquote class="comment-preview">{{ comment.body|truncatechars:240 }}</blockquote>
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-actions">
+                <button class="button button-danger" type="submit">حذف دیدگاه</button>
+                <a class="button button-ghost" href="{% url 'boards:task_detail' workspace.slug project.pk task.pk %}">انصراف</a>
+            </div>
+        </form>
+    </article>
+</section>
+{% endblock %}

@@ -2,7 +2,7 @@ from django import forms
 
 from apps.accounts.models import User
 
-from .models import BoardColumn, Task
+from .models import BoardColumn, Task, TaskComment
 
 
 class BoardColumnForm(forms.ModelForm):
@@ -49,3 +49,24 @@ class TaskForm(forms.ModelForm):
         if not title:
             raise forms.ValidationError("عنوان وظیفه نمی‌تواند خالی باشد.")
         return title
+
+
+class TaskCommentForm(forms.ModelForm):
+    class Meta:
+        model = TaskComment
+        fields = ("body",)
+        widgets = {
+            "body": forms.Textarea(
+                attrs={
+                    "rows": 4,
+                    "maxlength": 5000,
+                    "placeholder": "دیدگاه خود را دربارهٔ این وظیفه بنویسید…",
+                }
+            )
+        }
+
+    def clean_body(self):
+        body = self.cleaned_data["body"].strip()
+        if not body:
+            raise forms.ValidationError("متن دیدگاه نمی‌تواند خالی باشد.")
+        return body

@@ -29,5 +29,98 @@
             <div><dt>آخرین تغییر</dt><dd>{{ task.updated_at|date:"Y/m/d H:i" }}</dd></div>
         </dl>
     </article>
+
+    <div class="task-collaboration-grid">
+        <section class="collaboration-card" aria-labelledby="comments-heading">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">گفت‌وگو</p>
+                    <h2 id="comments-heading">دیدگاه‌ها</h2>
+                </div>
+                <span class="count-badge">{{ comment_page.paginator.count }}</span>
+            </div>
+
+            {% if project.status == 'active' %}
+                <form method="post" action="{% url 'boards:comment_create' workspace.slug project.pk task.pk %}" class="comment-form">
+                    {% csrf_token %}
+                    <div class="form-field">
+                        <label for="{{ comment_form.body.id_for_label }}">دیدگاه تازه</label>
+                        {{ comment_form.body }}
+                    </div>
+                    <div class="form-actions">
+                        <button class="button button-primary" type="submit">ثبت دیدگاه</button>
+                    </div>
+                </form>
+            {% else %}
+                <div class="inline-notice">این پروژه بایگانی شده و دیدگاه‌ها فقط قابل مشاهده‌اند.</div>
+            {% endif %}
+
+            <div class="comment-list">
+                {% for comment in comment_page %}
+                    <article class="comment-item">
+                        <header>
+                            <div>
+                                <strong>{{ comment.author.profile.full_name|default:comment.author.email|default:"کاربر حذف‌شده" }}</strong>
+                                <time datetime="{{ comment.created_at|date:'c' }}">{{ comment.created_at|date:"Y/m/d H:i" }}</time>
+                                {% if comment.updated_at != comment.created_at %}<span class="muted">· ویرایش‌شده</span>{% endif %}
+                            </div>
+                            {% if project.status == 'active' and comment.author_id == request.user.id %}
+                                <div class="comment-actions">
+                                    <a href="{% url 'boards:comment_edit' workspace.slug project.pk task.pk comment.pk %}">ویرایش</a>
+                                    <a class="danger-text" href="{% url 'boards:comment_delete' workspace.slug project.pk task.pk comment.pk %}">حذف</a>
+                                </div>
+                            {% endif %}
+                        </header>
+                        <div class="comment-body">{{ comment.body|linebreaksbr }}</div>
+                    </article>
+                {% empty %}
+                    <div class="empty-state compact-empty">
+                        <h3>هنوز دیدگاهی ثبت نشده است</h3>
+                        <p>نخستین نکته یا پرسش مرتبط با این وظیفه را ثبت کنید.</p>
+                    </div>
+                {% endfor %}
+            </div>
+
+            {% if comment_page.paginator.num_pages > 1 %}
+                <nav class="pagination" aria-label="صفحه‌بندی دیدگاه‌ها">
+                    {% if comment_page.has_previous %}<a href="?comments_page={{ comment_page.previous_page_number }}{% if activity_page.number %}&amp;activity_page={{ activity_page.number }}{% endif %}">قبلی</a>{% endif %}
+                    <span>صفحهٔ {{ comment_page.number }} از {{ comment_page.paginator.num_pages }}</span>
+                    {% if comment_page.has_next %}<a href="?comments_page={{ comment_page.next_page_number }}{% if activity_page.number %}&amp;activity_page={{ activity_page.number }}{% endif %}">بعدی</a>{% endif %}
+                </nav>
+            {% endif %}
+        </section>
+
+        <section class="collaboration-card" aria-labelledby="activity-heading">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">تاریخچه</p>
+                    <h2 id="activity-heading">فعالیت‌ها</h2>
+                </div>
+            </div>
+            <ol class="activity-list">
+                {% for activity in activity_page %}
+                    <li class="activity-item">
+                        <span class="activity-marker" aria-hidden="true"></span>
+                        <div>
+                            <p><strong>{{ activity.actor.profile.full_name|default:activity.actor.email|default:"کاربر حذف‌شده" }}</strong> {{ activity.get_event_type_display }}</p>
+                            {% if activity.event_type == 'task_moved' %}
+                                <p class="muted">از «{{ activity.metadata.from_column_name }}» جایگاه {{ activity.metadata.from_position|add:1 }} به «{{ activity.metadata.to_column_name }}» جایگاه {{ activity.metadata.to_position|add:1 }}</p>
+                            {% endif %}
+                            <time datetime="{{ activity.created_at|date:'c' }}">{{ activity.created_at|date:"Y/m/d H:i" }}</time>
+                        </div>
+                    </li>
+                {% empty %}
+                    <li class="empty-state compact-empty">هنوز فعالیتی برای این وظیفه ثبت نشده است.</li>
+                {% endfor %}
+            </ol>
+            {% if activity_page.paginator.num_pages > 1 %}
+                <nav class="pagination" aria-label="صفحه‌بندی فعالیت‌ها">
+                    {% if activity_page.has_previous %}<a href="?activity_page={{ activity_page.previous_page_number }}{% if comment_page.number %}&amp;comments_page={{ comment_page.number }}{% endif %}">قبلی</a>{% endif %}
+                    <span>صفحهٔ {{ activity_page.number }} از {{ activity_page.paginator.num_pages }}</span>
+                    {% if activity_page.has_next %}<a href="?activity_page={{ activity_page.next_page_number }}{% if comment_page.number %}&amp;comments_page={{ comment_page.number }}{% endif %}">بعدی</a>{% endif %}
+                </nav>
+            {% endif %}
+        </section>
+    </div>
 </section>
 {% endblock %}

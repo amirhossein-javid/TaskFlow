@@ -208,6 +208,20 @@ def _validate_assignee(*, workspace_id: int, assignee_id: int | None) -> None:
         raise ValidationError({"assignee": "مسئول باید عضو همین فضای کاری باشد."})
 
 
+def _locked_comment_task(*, task_id: int, board: Board) -> Task:
+    task = Task.objects.select_for_update().filter(pk=task_id, column__board=board).first()
+    if task is None:
+        raise ValidationError("وظیفهٔ مربوط به دیدگاه دیگر وجود ندارد.")
+    return task
+
+
+def _locked_comment(*, comment_id: int, task: Task) -> TaskComment:
+    comment = TaskComment.objects.select_for_update().filter(pk=comment_id, task=task).first()
+    if comment is None:
+        raise ValidationError("دیدگاه موردنظر دیگر وجود ندارد.")
+    return comment
+
+
 @transaction.atomic
 def create_task(
     *,
@@ -358,6 +372,7 @@ def move_task(
         raise ValidationError("وظیفهٔ موردنظر در این برد پیدا نشد.")
     source_column_id = locked_task.column_id
     source_position = locked_task.position
+    column_names = {column.pk: column.name for column in columns}
     moved_task = _apply_task_move(
         board=board,
         columns=columns,
@@ -374,8 +389,10 @@ def move_task(
             event_type=TaskActivity.EventType.TASK_MOVED,
             metadata={
                 "from_column_id": source_column_id,
+                "from_column_name": column_names[source_column_id],
                 "from_position": source_position,
                 "to_column_id": moved_task.column_id,
+                "to_column_name": column_names[moved_task.column_id],
                 "to_position": moved_task.position,
             },
         )
@@ -419,6 +436,7 @@ def nudge_task(
         )
     source_column_id = task.column_id
     source_position = task.position
+    column_names = {column.pk: column.name for column in columns}
     moved_task = _apply_task_move(
         board=board,
         columns=columns,
@@ -435,8 +453,10 @@ def nudge_task(
             event_type=TaskActivity.EventType.TASK_MOVED,
             metadata={
                 "from_column_id": source_column_id,
+                "from_column_name": column_names[source_column_id],
                 "from_position": source_position,
                 "to_column_id": moved_task.column_id,
+                "to_column_name": column_names[moved_task.column_id],
                 "to_position": moved_task.position,
             },
         )
@@ -453,7 +473,7 @@ def create_task_comment(
     project, board = _locked_project_board(board_id=task.column.board_id)
     actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
     _require_active(project)
-    task = Task.objects.select_for_update().get(pk=task.pk, column__board=board)
+    task = _locked_comment_task(task_id=task.pk, board=board)
     comment = TaskComment(task=task, author=actor.user, body=body.strip())
     comment.full_clean()
     comment.save()
@@ -477,8 +497,8 @@ def update_task_comment(
     project, board = _locked_project_board(board_id=comment.task.column.board_id)
     actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
     _require_active(project)
-    task = Task.objects.select_for_update().get(pk=comment.task_id, column__board=board)
-    comment = TaskComment.objects.select_for_update().get(pk=comment.pk, task=task)
+    task = _locked_comment_task(task_id=comment.task_id, board=board)
+    comment = _locked_comment(comment_id=comment.pk, task=task)
     if comment.author_id != actor.user_id:
         raise PermissionDenied
     normalized_body = body.strip()
@@ -506,8 +526,8 @@ def delete_task_comment(
     project, board = _locked_project_board(board_id=comment.task.column.board_id)
     actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
     _require_active(project)
-    task = Task.objects.select_for_update().get(pk=comment.task_id, column__board=board)
-    comment = TaskComment.objects.select_for_update().get(pk=comment.pk, task=task)
+    task = _locked_comment_task(task_id=comment.task_id, board=board)
+    comment = _locked_comment(comment_id=comment.pk, task=task)
     if comment.author_id != actor.user_id:
         raise PermissionDenied
     comment_id = comment.pk

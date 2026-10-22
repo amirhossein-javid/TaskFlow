@@ -1,4 +1,5 @@
 from datetime import date
+from unittest.mock import patch
 
 import pytest
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -176,6 +177,36 @@ def test_task_activity_skips_no_op_updates_and_incidental_reordering(board_conte
         TaskActivity.EventType.TASK_MOVED,
         TaskActivity.EventType.TASK_CREATED,
     ]
+
+
+def test_activity_failure_rolls_back_task_update(board_context):
+    actor = board_context["member_membership"]
+    task = create_task(
+        column=board_context["board"].columns.first(),
+        actor=actor,
+        title="Original",
+        description="",
+        priority=Task.Priority.MEDIUM,
+        due_date=None,
+        assignee=None,
+    )
+
+    with (
+        patch.object(TaskActivity.objects, "create", side_effect=RuntimeError("storage error")),
+        pytest.raises(RuntimeError, match="storage error"),
+    ):
+        update_task(
+            task=task,
+            actor=actor,
+            title="Changed",
+            description="",
+            priority=Task.Priority.MEDIUM,
+            due_date=None,
+            assignee=None,
+        )
+
+    task.refresh_from_db()
+    assert task.title == "Original"
 
 
 def test_task_deletion_preserves_activity_with_snapshot(board_context):

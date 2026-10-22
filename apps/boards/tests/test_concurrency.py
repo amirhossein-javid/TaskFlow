@@ -2,16 +2,20 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 import pytest
+from django.core.exceptions import ValidationError
 from django.db import close_old_connections, connection
 
 from apps.accounts.models import User
-from apps.boards.models import Task
+from apps.boards.models import Task, TaskActivity, TaskComment
 from apps.boards.services import (
     create_task,
+    create_task_comment,
+    delete_task_comment,
     move_task,
     nudge_task,
     reorder_columns,
     shift_column,
+    update_task_comment,
 )
 from apps.projects.models import Project
 from apps.workspaces.models import WorkspaceMembership
@@ -219,3 +223,50 @@ def test_concurrent_task_move_and_column_reorder_complete_without_deadlock():
     assert task.column_id == columns[1].pk
     assert task.position == 0
     assert list(board.columns.values_list("id", flat=True)) == reordered_ids
+
+
+def test_concurrent_comment_creation_records_each_comment_once():
+    if connection.vendor != "postgresql":
+        pytest.skip("Row-lock concurrency is PostgreSQL-specific.")
+    board, _owner, member = make_board_context()
+    task = make_task(column=board.columns.first(), actor=member, title="Discuss")
+
+    def create(body):
+        fresh_task = Task.objects.select_related("column").get(pk=task.pk)
+        create_task_comment(task=fresh_task, actor=member, body=body)
+
+    run_concurrently(lambda: create("First"), lambda: create("Second"))
+
+    assert set(task.comments.values_list("body", flat=True)) == {"First", "Second"}
+    assert task.activities.filter(event_type=TaskActivity.EventType.COMMENT_CREATED).count() == 2
+
+
+def test_concurrent_comment_edit_and_delete_finish_without_deadlock_or_resurrection():
+    if connection.vendor != "postgresql":
+        pytest.skip("Row-lock concurrency is PostgreSQL-specific.")
+    board, _owner, member = make_board_context()
+    task = make_task(column=board.columns.first(), actor=member, title="Discuss")
+    comment = create_task_comment(task=task, actor=member, body="Original")
+    edit_comment = TaskComment.objects.select_related("task__column").get(pk=comment.pk)
+    delete_comment = TaskComment.objects.select_related("task__column").get(pk=comment.pk)
+
+    def edit():
+        try:
+            update_task_comment(comment=edit_comment, actor=member, body="Edited")
+        except ValidationError:
+            pass
+
+    def delete():
+        delete_task_comment(comment=delete_comment, actor=member)
+
+    run_concurrently(edit, delete)
+
+    assert not TaskComment.objects.filter(pk=comment.pk).exists()
+    events = task.activities.filter(
+        event_type__in=[
+            TaskActivity.EventType.COMMENT_EDITED,
+            TaskActivity.EventType.COMMENT_DELETED,
+        ]
+    )
+    assert events.filter(event_type=TaskActivity.EventType.COMMENT_DELETED).count() == 1
+    assert events.filter(event_type=TaskActivity.EventType.COMMENT_EDITED).count() <= 1
