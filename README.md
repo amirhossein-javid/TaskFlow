@@ -1,6 +1,6 @@
 # TaskFlow
 
-TaskFlow is a team task management application built with Django 5.2 and PostgreSQL. It currently provides email-based authentication, user profiles, workspace membership management, workspace-scoped projects, and Kanban task boards.
+TaskFlow is a team task management application built with Django 5.2, PostgreSQL, Django Templates, and vanilla JavaScript. Features through Phase 6 include email-based authentication, workspaces with role-based access, project Kanban boards, task comments and activity history, and task search, filtering, and sorting. The responsive Persian RTL interface supports light and dark themes.
 
 ## Requirements
 
@@ -63,10 +63,11 @@ transaction. Raw fixture loads also skip automatic profile creation. Use
 `repair_profiles` after legacy imports when needed. Direct SQL and low-level
 operations that bypass these application safeguards remain the caller's
 responsibility; there is no database-level guarantee that every User has a Profile.
+Board assignee filters fall back to email if a legacy User unexpectedly lacks a Profile.
 
 ## Run tests
 
-The test suite uses the PostgreSQL service from Docker Compose:
+The test suite uses the PostgreSQL service from Docker Compose and enforces at least 85% application coverage. It includes regression tests for permissions, filtering, profile lifecycle, and concurrent ordering and repair operations:
 
 ```powershell
 docker compose run --rm web sh -c "pip install -r requirements/development.txt && pytest"
@@ -129,7 +130,7 @@ docker compose run --rm web python manage.py migrate
 
 ## Projects
 
-Every project belongs to one workspace and is visible only to that workspace's members. Owners and Admins can create, edit, archive, and restore projects. Members have read-only access. Archived projects remain available for reference and must be restored before they can be edited.
+Every project belongs to one workspace and is visible only to that workspace's members. Owners and Admins can create, edit, archive, and restore projects. Members can view projects and collaborate on their tasks, but cannot change project settings. Archived projects remain readable and must be restored before editing project settings or changing boards, tasks, or comments.
 
 Project routes are nested below their workspace at `/workspaces/<slug>/projects/`. Apply migrations after updating:
 
@@ -141,9 +142,25 @@ docker compose run --rm web python manage.py migrate
 
 Each project receives exactly one board with three initial workflow columns. Workspace members can create, edit, assign, move, reorder, and delete tasks. Owners and Admins can also create, rename, reorder, and safely delete empty columns. A column containing tasks cannot be deleted until those tasks are moved.
 
-Task ordering is serialized with database row locks and maintained as a dense, deterministic sequence. Assignees must be members of the same workspace, direct URLs remain workspace-scoped, and archived projects expose their board in read-only mode. The responsive Persian interface supports drag and drop plus keyboard- and mobile-accessible move controls.
+Tasks have a title, description, priority, optional assignee, and optional due date. Task assignment forms offer active workspace members. Task ordering is serialized with database row locks and maintained as a dense, deterministic sequence. Direct URLs remain workspace- and project-scoped. The board supports drag and drop plus keyboard- and mobile-accessible move controls in its complete, manual-order view.
 
 Board routes are nested below their project at `/workspaces/<slug>/projects/<project_id>/board/`.
+
+### Comments and activity history (Phase 5)
+
+Workspace members can comment on tasks and edit or delete their own comments. Task detail pages show independently paginated comments and activity history, including task creation, edits, assignment changes, moves, and comment changes. Meaningful events are recorded in the same service transaction as the corresponding mutation; no-op edits do not create activity.
+
+Deleting a task removes its comments but retains activity records in the database with the stored task title. Activity is product history, not a tamper-proof security audit log. Task, comment, and activity Admin interfaces are read-only.
+
+### Search, filtering, and sorting (Phase 6)
+
+The board supports case-insensitive substring search across task titles and descriptions. Filters combine with AND and cover column, priority, assignee (including unassigned tasks), and an inclusive due-date range. Assignee options include current workspace members and users still assigned to tasks on the current board, without exposing unrelated users.
+
+Tasks can be sorted within each column by creation date, due date, or priority in either direction. Sorting is deterministic and display-only: it never changes stored task positions or column order. Tasks without a due date appear last in both due-date sort directions; manual ordering remains the default.
+
+Search, filters, and sorting use GET parameters, so the URL preserves the selected state for sharing, refresh, and browser navigation. Invalid filters display Persian validation errors and return no tasks. All columns remain visible, with counts reflecting the displayed results.
+
+Task drag and drop, task move buttons, and column ordering controls are disabled whenever filtering or non-default sorting is active. Clearing the filters restores the complete, manual-order view and its move controls for active projects. Archived boards remain searchable and read-only.
 
 ## Language conventions
 
