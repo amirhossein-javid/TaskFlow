@@ -1026,6 +1026,12 @@ h3 {
 .kanban-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.25rem; }
 .kanban-heading h1 { margin: 0; font-size: clamp(1.7rem, 5vw, 2.5rem); }
 .kanban-heading > div > p:last-child { margin: .45rem 0 0; color: var(--text-secondary); }
+.board-filters { margin-block: 1.5rem 1rem; }
+.board-filter-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: .8rem 1rem; align-items: start; }
+.board-filter-fields .form-group { min-width: 0; margin: 0; }
+.board-filter-fields .has-error select { border-color: var(--danger); }
+.board-filter-errors { padding: .8rem; border: 1px solid var(--danger); border-radius: var(--radius-md); }
+.board-filter-notice { color: var(--text-secondary); font-size: .8rem; }
 .kanban-back { margin: 0 0 .85rem; }
 .kanban-title-row { display: flex; align-items: center; gap: .8rem; }
 .column-create-menu,

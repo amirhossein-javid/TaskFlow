@@ -146,3 +146,58 @@ def test_sorting_is_scoped_to_each_column(client, search_board, sort, first_colu
     assert [task.pk for task in columns[0].tasks.all()] == [tasks[i].pk for i in first_column]
     assert list(columns[1].tasks.all()) == [tasks[1]]
     assert not response.context["can_move"]
+
+
+@pytest.mark.parametrize("params", [{"q": "طراحی"}, {"sort": "due_asc"}, {"sort": "invalid"}])
+def test_filtered_ui_disables_every_move_control(client, search_board, params):
+    board, *_ = search_board
+    response = client.get(board_url(board), params)
+    html = response.content.decode()
+    assert 'data-can-move="false"' in html
+    assert 'draggable="true"' not in html
+    assert "data-move-url=" not in html
+    assert "/nudge/" not in html
+    assert "/shift/" not in html
+    assert "js/kanban.js" not in html
+    assert "بازگشت به نمای کامل و ترتیب دستی" in html
+    assert "/tasks/new/" in html
+
+
+def test_default_ui_keeps_move_controls_and_get_filter_form(client, search_board):
+    board, *_ = search_board
+    html = client.get(board_url(board)).content.decode()
+    assert 'data-can-move="true"' in html
+    assert 'draggable="true"' in html
+    assert "/nudge/" in html
+    assert "/shift/" in html
+    assert "js/kanban.js" in html
+    assert f'method="get" action="{board_url(board)}"' in html
+    assert f'href="{board_url(board)}">پاک‌کردن فیلترها</a>' in html
+
+
+def test_filter_ui_preserves_values_counts_and_accessible_errors(client, search_board):
+    board, _, _, columns, _ = search_board
+    params = {
+        "q": "طراحی",
+        "priority": "high",
+        "column": columns[0].pk,
+        "due_from": "2026-10-22",
+        "sort": "due_asc",
+    }
+    response = client.get(board_url(board), params)
+    html = response.content.decode()
+    for name, value in params.items():
+        assert str(response.context["filter_form"][name].value()) == str(value)
+    assert 'value="طراحی"' in html
+    assert 'value="high" selected' in html
+    assert 'value="due_asc" selected' in html
+    assert html.count('aria-label="1 وظیفهٔ نمایش‌داده‌شده">1') == 1
+    assert html.count('aria-label="0 وظیفهٔ نمایش‌داده‌شده">0') == 2
+    assert "وظیفه‌ای برای نمایش با این تنظیمات وجود ندارد." in html
+
+    html = client.get(board_url(board), {"priority": "invalid"}).content.decode()
+    assert "اولویت انتخاب‌شده معتبر نیست." in html
+    assert "تا اصلاح آن‌ها هیچ وظیفه‌ای نمایش داده نمی‌شود." in html
+    assert 'aria-invalid="true"' in html
+    assert 'aria-describedby="id_priority_error"' in html
+    assert 'id="id_priority_error"' in html
