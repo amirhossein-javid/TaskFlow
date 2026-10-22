@@ -30,6 +30,8 @@
         </dl>
     </article>
 
+    {% include "boards/_task_features.html" %}
+
     <div class="task-collaboration-grid">
         <section class="collaboration-card" aria-labelledby="comments-heading">
             <div class="section-heading">
@@ -105,6 +107,10 @@
                             <p><strong>{% if activity.actor %}{{ activity.actor.profile.full_name|default:activity.actor.email }}{% else %}کاربر حذف‌شده{% endif %}</strong> {{ activity.get_event_type_display }}</p>
                             {% if activity.event_type == 'task_moved' %}
                                 <p class="muted">از «{{ activity.metadata.from_column_name }}» جایگاه {{ activity.metadata.from_position|add:1 }} به «{{ activity.metadata.to_column_name }}» جایگاه {{ activity.metadata.to_position|add:1 }}</p>
+                            {% elif activity.metadata.label_name %}
+                                <p class="muted">برچسب «{{ activity.metadata.label_name }}»</p>
+                            {% elif activity.metadata.checklist_title %}
+                                <p class="muted">چک‌لیست «{{ activity.metadata.checklist_title }}»{% if activity.metadata.item_text %} · {{ activity.metadata.item_text }}{% endif %}</p>
                             {% endif %}
                             <time datetime="{{ activity.created_at|date:'c' }}">{{ activity.created_at|date:"Y/m/d H:i" }}</time>
                         </div>

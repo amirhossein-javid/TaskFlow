@@ -3,7 +3,50 @@ from django.db.models import Q
 
 from apps.accounts.models import User
 
-from .models import BoardColumn, Task, TaskComment
+from .models import BoardColumn, ChecklistItem, ProjectLabel, Task, TaskChecklist, TaskComment
+
+
+class TaskChecklistForm(forms.ModelForm):
+    class Meta:
+        model = TaskChecklist
+        fields = ("title",)
+
+
+class ChecklistItemForm(forms.ModelForm):
+    class Meta:
+        model = ChecklistItem
+        fields = ("text",)
+
+
+class ChecklistItemStateForm(forms.Form):
+    completed = forms.TypedChoiceField(
+        label="وضعیت",
+        choices=[("true", "انجام‌شده"), ("false", "انجام‌نشده")],
+        coerce=lambda value: value == "true",
+    )
+
+
+class ProjectLabelForm(forms.ModelForm):
+    class Meta:
+        model = ProjectLabel
+        fields = ("name", "color")
+
+
+class TaskLabelForm(forms.Form):
+    label = forms.ModelChoiceField(
+        label="برچسب",
+        queryset=ProjectLabel.objects.none(),
+        error_messages={"invalid_choice": "برچسب انتخاب‌شده متعلق به این پروژه نیست."},
+    )
+    attached = forms.TypedChoiceField(
+        label="عملیات",
+        choices=[("true", "افزودن"), ("false", "برداشتن")],
+        coerce=lambda value: value == "true",
+    )
+
+    def __init__(self, *args, project, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["label"].queryset = ProjectLabel.objects.filter(project=project)
 
 
 class TaskFilterForm(forms.Form):

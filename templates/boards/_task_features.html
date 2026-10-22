@@ -1,0 +1,75 @@
+<section class="collaboration-card task-features" aria-labelledby="task-labels-heading">
+    <h2 id="task-labels-heading">برچسب‌ها</h2>
+    <a href="{% url 'boards:label_list' workspace.slug project.pk %}">برچسب‌های پروژه</a>
+    <ul class="task-labels task-label-list">
+        {% for label in assigned_labels %}
+            <li class="task-label label-{{ label.color }}">
+                <span>{{ label.name }}</span>
+                {% if project.status == 'active' %}
+                    <form method="post" action="{% url 'boards:task_label' workspace.slug project.pk task.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="label" value="{{ label.pk }}">
+                        <input type="hidden" name="attached" value="false">
+                        <button type="submit" class="button button-ghost button-small" aria-label="برداشتن برچسب {{ label.name }}">برداشتن</button>
+                    </form>
+                {% endif %}
+            </li>
+        {% empty %}<li class="muted">این وظیفه برچسبی ندارد.</li>{% endfor %}
+    </ul>
+    {% if project.status == 'active' and available_labels %}
+        <form method="post" action="{% url 'boards:task_label' workspace.slug project.pk task.pk %}" class="feature-inline-form">
+            {% csrf_token %}
+            <label for="task-label-choice">افزودن برچسب</label>
+            <div class="field-control"><select id="task-label-choice" name="label" required>
+                {% for label in available_labels %}<option value="{{ label.pk }}">{{ label.name }}</option>{% endfor %}
+            </select></div>
+            <input type="hidden" name="attached" value="true">
+            <button class="button button-small" type="submit">افزودن</button>
+        </form>
+    {% endif %}
+</section>
+
+<section class="collaboration-card task-features" aria-labelledby="task-checklists-heading">
+    <div class="section-heading">
+        <h2 id="task-checklists-heading">چک‌لیست‌ها</h2>
+        {% if project.status == 'active' %}<a class="button button-small" href="{% url 'boards:checklist_create' workspace.slug project.pk task.pk %}">ساخت چک‌لیست</a>{% endif %}
+    </div>
+    {% for checklist in checklists %}
+        <section class="task-checklist" aria-labelledby="checklist-heading-{{ checklist.pk }}">
+            <h3 id="checklist-heading-{{ checklist.pk }}">{{ checklist.title }}</h3>
+            {% if checklist.item_total %}
+                <div class="checklist-progress">
+                    <span>{{ checklist.item_completed }} از {{ checklist.item_total }} مورد انجام شده</span>
+                    <progress value="{{ checklist.item_completed }}" max="{{ checklist.item_total }}" aria-labelledby="checklist-heading-{{ checklist.pk }}">{{ checklist.item_completed }} از {{ checklist.item_total }}</progress>
+                </div>
+            {% else %}<p class="muted">این چک‌لیست هنوز موردی ندارد.</p>{% endif %}
+            {% if project.status == 'active' %}
+                <div class="form-actions">
+                    <a href="{% url 'boards:checklist_item_create' workspace.slug project.pk task.pk checklist.pk %}">افزودن مورد</a>
+                    <a href="{% url 'boards:checklist_edit' workspace.slug project.pk task.pk checklist.pk %}">ویرایش {{ checklist.title }}</a>
+                    <a class="danger-text" href="{% url 'boards:checklist_delete' workspace.slug project.pk task.pk checklist.pk %}">حذف {{ checklist.title }}</a>
+                </div>
+            {% endif %}
+            <ul class="checklist-items">
+                {% for item in checklist.items.all %}
+                    <li class="checklist-item{% if item.is_completed %} is-completed{% endif %}">
+                        <div>
+                            <span class="checklist-item-text">{{ item.text }}</span>
+                            <span class="muted">{% if item.is_completed %}انجام‌شده{% else %}انجام‌نشده{% endif %}</span>
+                        </div>
+                        {% if project.status == 'active' %}
+                            <div class="form-actions">
+                                <form method="post" action="{% url 'boards:checklist_item_state' workspace.slug project.pk task.pk checklist.pk item.pk %}">
+                                    {% csrf_token %}
+                                    <button class="button button-small button-secondary" type="submit" name="completed" value="{% if item.is_completed %}false{% else %}true{% endif %}" aria-label="{% if item.is_completed %}بازگشایی{% else %}انجام{% endif %} مورد {{ item.text }}">{% if item.is_completed %}بازگشایی{% else %}انجام شد{% endif %}</button>
+                                </form>
+                                <a href="{% url 'boards:checklist_item_edit' workspace.slug project.pk task.pk checklist.pk item.pk %}">ویرایش {{ item.text|truncatechars:24 }}</a>
+                                <a class="danger-text" href="{% url 'boards:checklist_item_delete' workspace.slug project.pk task.pk checklist.pk item.pk %}">حذف {{ item.text|truncatechars:24 }}</a>
+                            </div>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        </section>
+    {% empty %}<p class="muted">هنوز چک‌لیستی ساخته نشده است.</p>{% endfor %}
+</section>

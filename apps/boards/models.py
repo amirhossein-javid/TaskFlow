@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.functions import Lower
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -95,6 +96,13 @@ class Task(models.Model):
     position = models.PositiveIntegerField(_("جایگاه"))
     created_at = models.DateTimeField(_("تاریخ ایجاد"), auto_now_add=True)
     updated_at = models.DateTimeField(_("تاریخ به‌روزرسانی"), auto_now=True)
+    labels = models.ManyToManyField(
+        "ProjectLabel",
+        through="TaskLabel",
+        related_name="tasks",
+        blank=True,
+        verbose_name=_("برچسب‌ها"),
+    )
 
     class Meta:
         ordering = ["position", "id"]
@@ -129,6 +137,132 @@ class Task(models.Model):
             ).exists()
         ):
             raise ValidationError({"assignee": "مسئول باید عضو همین فضای کاری باشد."})
+
+
+class ProjectLabel(models.Model):
+    class Color(models.TextChoices):
+        BLUE = "blue", _("آبی")
+        GREEN = "green", _("سبز")
+        RED = "red", _("قرمز")
+        PURPLE = "purple", _("بنفش")
+        AMBER = "amber", _("کهربایی")
+        GRAY = "gray", _("خاکستری")
+
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="labels", verbose_name=_("پروژه")
+    )
+    name = models.CharField(_("نام برچسب"), max_length=64)
+    color = models.CharField(_("رنگ"), max_length=10, choices=Color.choices, default=Color.BLUE)
+
+    class Meta:
+        ordering = ["name", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                Lower("name"),
+                "project",
+                name="unique_project_label_name",
+                violation_error_message="این نام برچسب در پروژه وجود دارد.",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(name__regex=r"^\s*$"), name="label_name_not_blank"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(color__in=["blue", "green", "red", "purple", "amber", "gray"]),
+                name="valid_label_color",
+            ),
+        ]
+        verbose_name = _("برچسب پروژه")
+        verbose_name_plural = _("برچسب‌های پروژه")
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        super().clean()
+        self.name = self.name.strip()
+        if not self.name:
+            raise ValidationError({"name": "نام برچسب نمی‌تواند خالی باشد."})
+
+
+class TaskLabel(models.Model):
+    task = models.ForeignKey(
+        Task, on_delete=models.CASCADE, related_name="label_links", verbose_name=_("وظیفه")
+    )
+    label = models.ForeignKey(
+        ProjectLabel, on_delete=models.CASCADE, related_name="task_links", verbose_name=_("برچسب")
+    )
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["task", "label"], name="unique_task_label")]
+        verbose_name = _("برچسب وظیفه")
+        verbose_name_plural = _("برچسب‌های وظیفه")
+
+    def __str__(self):
+        return f"{self.task}: {self.label}"
+
+    def clean(self):
+        super().clean()
+        if (
+            self.task_id
+            and self.label_id
+            and self.task.column.board.project_id != self.label.project_id
+        ):
+            raise ValidationError("برچسب باید متعلق به پروژهٔ همین وظیفه باشد.")
+
+
+class TaskChecklist(models.Model):
+    task = models.ForeignKey(
+        Task, on_delete=models.CASCADE, related_name="checklists", verbose_name=_("وظیفه")
+    )
+    title = models.CharField(_("عنوان چک‌لیست"), max_length=100)
+    created_at = models.DateTimeField(_("تاریخ ایجاد"), auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(title__regex=r"^\s*$"), name="checklist_title_not_blank"
+            )
+        ]
+        verbose_name = _("چک‌لیست")
+        verbose_name_plural = _("چک‌لیست‌ها")
+
+    def __str__(self):
+        return self.title
+
+    def clean(self):
+        super().clean()
+        self.title = self.title.strip()
+        if not self.title:
+            raise ValidationError({"title": "عنوان چک‌لیست نمی‌تواند خالی باشد."})
+
+
+class ChecklistItem(models.Model):
+    checklist = models.ForeignKey(
+        TaskChecklist, on_delete=models.CASCADE, related_name="items", verbose_name=_("چک‌لیست")
+    )
+    text = models.CharField(_("متن مورد"), max_length=300)
+    is_completed = models.BooleanField(_("انجام‌شده"), default=False)
+    created_at = models.DateTimeField(_("تاریخ ایجاد"), auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(text__regex=r"^\s*$"), name="checklist_item_text_not_blank"
+            )
+        ]
+        verbose_name = _("مورد چک‌لیست")
+        verbose_name_plural = _("موارد چک‌لیست")
+
+    def __str__(self):
+        return self.text
+
+    def clean(self):
+        super().clean()
+        self.text = self.text.strip()
+        if not self.text:
+            raise ValidationError({"text": "متن مورد نمی‌تواند خالی باشد."})
 
 
 class TaskComment(models.Model):
@@ -179,6 +313,16 @@ class TaskActivity(models.Model):
         COMMENT_EDITED = "comment_edited", _("دیدگاه ویرایش شد")
         COMMENT_DELETED = "comment_deleted", _("دیدگاه حذف شد")
         TASK_DELETED = "task_deleted", _("وظیفه حذف شد")
+        LABEL_ATTACHED = "label_attached", _("برچسب به وظیفه افزوده شد")
+        LABEL_DETACHED = "label_detached", _("برچسب از وظیفه برداشته شد")
+        CHECKLIST_CREATED = "checklist_created", _("چک‌لیست ساخته شد")
+        CHECKLIST_UPDATED = "checklist_updated", _("چک‌لیست ویرایش شد")
+        CHECKLIST_DELETED = "checklist_deleted", _("چک‌لیست حذف شد")
+        ITEM_CREATED = "checklist_item_created", _("مورد چک‌لیست افزوده شد")
+        ITEM_UPDATED = "checklist_item_updated", _("مورد چک‌لیست ویرایش شد")
+        ITEM_COMPLETED = "checklist_item_completed", _("مورد چک‌لیست انجام شد")
+        ITEM_REOPENED = "checklist_item_reopened", _("مورد چک‌لیست بازگشایی شد")
+        ITEM_DELETED = "checklist_item_deleted", _("مورد چک‌لیست حذف شد")
 
     project = models.ForeignKey(
         Project,

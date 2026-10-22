@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}برچسب‌های پروژه | TaskFlow{% endblock %}
+{% block content %}
+<section class="workspace-page page-width">
+    <a class="back-link" href="{% url 'boards:detail' workspace.slug project.pk %}">→ بازگشت به برد</a>
+    <h1>برچسب‌های {{ project.name }}</h1>
+    {% if is_manager and project.status == 'active' %}<a class="button" href="{% url 'boards:label_create' workspace.slug project.pk %}">ساخت برچسب</a>{% endif %}
+    <ul>
+    {% for label in labels %}
+        <li><span class="task-label label-{{ label.color }}">{{ label.name }}</span>
+        {% if is_manager and project.status == 'active' %}
+            <a href="{% url 'boards:label_edit' workspace.slug project.pk label.pk %}">ویرایش {{ label.name }}</a>
+            <a href="{% url 'boards:label_delete' workspace.slug project.pk label.pk %}">حذف {{ label.name }}</a>
+        {% endif %}</li>
+    {% empty %}<li>هنوز برچسبی ساخته نشده است.</li>{% endfor %}
+    </ul>
+</section>
+{% endblock %}

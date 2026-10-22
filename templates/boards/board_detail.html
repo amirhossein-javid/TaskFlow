@@ -13,6 +13,7 @@
                 <span class="project-status{% if project.status == 'active' %} project-status-active{% endif %}">{{ project.get_status_display }}</span>
             </div>
             <p>جریان کار تیم را از شروع تا پایان در یک نما دنبال کنید.</p>
+            <a href="{% url 'boards:label_list' workspace.slug project.pk %}">برچسب‌های پروژه</a>
         </div>
         {% if is_manager and project.status == 'active' %}
             <details class="column-create-menu">
@@ -100,7 +101,18 @@
                                 <a class="task-card-main" href="{% url 'boards:task_detail' workspace.slug project.pk task.pk %}">
                                     <span class="priority-label">{{ task.get_priority_display }}</span>
                                     <h3>{{ task.title }}</h3>
+                                    {% if task.labels.all %}
+                                        <div class="task-labels" aria-label="برچسب‌های وظیفه">
+                                            {% for label in task.labels.all %}<span class="task-label label-{{ label.color }}">{{ label.name }}</span>{% endfor %}
+                                        </div>
+                                    {% endif %}
                                     {% if task.description %}<p>{{ task.description|truncatechars:90 }}</p>{% endif %}
+                                    {% if task.checklist_total %}
+                                        <div class="checklist-progress">
+                                            <span>{{ task.checklist_completed }} از {{ task.checklist_total }} مورد انجام شده</span>
+                                            <progress value="{{ task.checklist_completed }}" max="{{ task.checklist_total }}" aria-label="پیشرفت چک‌لیست‌های {{ task.title }}">{{ task.checklist_completed }} از {{ task.checklist_total }}</progress>
+                                        </div>
+                                    {% endif %}
                                     <footer>
                                         {% if task.assignee %}<span class="task-assignee" title="{{ task.assignee.email }}">{{ task.assignee.profile.full_name|default:task.assignee.email|truncatechars:24 }}</span>{% else %}<span class="task-assignee muted">بدون مسئول</span>{% endif %}
                                         {% if task.due_date %}<time datetime="{{ task.due_date|date:'Y-m-d' }}">{{ task.due_date|date:"Y/m/d" }}</time>{% endif %}

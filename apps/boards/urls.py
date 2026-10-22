@@ -1,5 +1,12 @@
 from django.urls import path
 
+from .checklist_views import (
+    ChecklistDeleteView,
+    ChecklistEditView,
+    ChecklistItemEditView,
+    ChecklistItemStateView,
+)
+from .label_views import LabelDeleteView, LabelEditView, LabelListView, TaskLabelView
 from .views import (
     BoardDetailView,
     ColumnCreateView,
@@ -21,6 +28,44 @@ from .views import (
 app_name = "boards"
 
 urlpatterns = [
+    path(
+        "tasks/<int:task_id>/checklists/new/", ChecklistEditView.as_view(), name="checklist_create"
+    ),
+    path(
+        "tasks/<int:task_id>/checklists/<int:checklist_id>/edit/",
+        ChecklistEditView.as_view(),
+        name="checklist_edit",
+    ),
+    path(
+        "tasks/<int:task_id>/checklists/<int:checklist_id>/delete/",
+        ChecklistDeleteView.as_view(),
+        name="checklist_delete",
+    ),
+    path(
+        "tasks/<int:task_id>/checklists/<int:checklist_id>/items/new/",
+        ChecklistItemEditView.as_view(),
+        name="checklist_item_create",
+    ),
+    path(
+        "tasks/<int:task_id>/checklists/<int:checklist_id>/items/<int:item_id>/edit/",
+        ChecklistItemEditView.as_view(),
+        name="checklist_item_edit",
+    ),
+    path(
+        "tasks/<int:task_id>/checklists/<int:checklist_id>/items/<int:item_id>/delete/",
+        ChecklistDeleteView.as_view(),
+        name="checklist_item_delete",
+    ),
+    path(
+        "tasks/<int:task_id>/checklists/<int:checklist_id>/items/<int:item_id>/state/",
+        ChecklistItemStateView.as_view(),
+        name="checklist_item_state",
+    ),
+    path("labels/", LabelListView.as_view(), name="label_list"),
+    path("labels/new/", LabelEditView.as_view(), name="label_create"),
+    path("labels/<int:label_id>/edit/", LabelEditView.as_view(), name="label_edit"),
+    path("labels/<int:label_id>/delete/", LabelDeleteView.as_view(), name="label_delete"),
+    path("tasks/<int:task_id>/labels/", TaskLabelView.as_view(), name="task_label"),
     path("", BoardDetailView.as_view(), name="detail"),
     path("columns/new/", ColumnCreateView.as_view(), name="column_create"),
     path("columns/reorder/", ColumnReorderView.as_view(), name="column_reorder"),

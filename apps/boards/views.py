@@ -3,7 +3,7 @@ import json
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
-from django.db.models import BigIntegerField, Case, Exists, F, OuterRef, Prefetch, Q, When
+from django.db.models import BigIntegerField, Case, Count, Exists, F, OuterRef, Prefetch, Q, When
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.http import JsonResponse
@@ -16,7 +16,7 @@ from apps.workspaces.models import WorkspaceMembership
 
 from .forms import BoardColumnForm, TaskCommentForm, TaskFilterForm, TaskForm
 from .mixins import BoardAccessMixin, BoardManagerRequiredMixin
-from .models import Task, TaskActivity
+from .models import ProjectLabel, Task, TaskActivity
 from .services import (
     create_column,
     create_task,
@@ -62,8 +62,18 @@ class BoardDetailView(BoardAccessMixin, TemplateView):
         return context
 
     def get_task_queryset(self, form):
-        tasks = Task.objects.filter(column__board=self.board).select_related(
-            "assignee", "assignee__profile"
+        tasks = (
+            Task.objects.filter(column__board=self.board)
+            .select_related("assignee", "assignee__profile")
+            .prefetch_related(
+                Prefetch("labels", queryset=ProjectLabel.objects.filter(project=self.project))
+            )
+            .annotate(
+                checklist_total=Count("checklists__items"),
+                checklist_completed=Count(
+                    "checklists__items", filter=Q(checklists__items__is_completed=True)
+                ),
+            )
         )
         if not form.is_valid():
             return tasks.none()
@@ -289,6 +299,14 @@ class TaskDetailView(BoardAccessMixin, DetailView):
             self.request.GET.get("activity_page")
         )
         context["comment_form"] = TaskCommentForm()
+        labels = list(self.project.labels.all())
+        assigned_ids = set(self.object.label_links.values_list("label_id", flat=True))
+        context["assigned_labels"] = [label for label in labels if label.pk in assigned_ids]
+        context["available_labels"] = [label for label in labels if label.pk not in assigned_ids]
+        context["checklists"] = self.object.checklists.annotate(
+            item_total=Count("items"),
+            item_completed=Count("items", filter=Q(items__is_completed=True)),
+        ).prefetch_related("items")
         return context
 
 
