@@ -30,15 +30,16 @@ def set_notification_read(*, user, notification_id, read):
     notifications = Notification.objects.visible_to(user).filter(pk=notification_id)
     if not notifications.exists():
         raise Notification.DoesNotExist
+    # Keep the state predicate on the UPDATE target, outside the access subquery.
+    # PostgreSQL then rechecks it after waiting for a concurrent row update.
+    writable = Notification.objects.filter(pk__in=notifications.values("pk"))
     if read:
-        return notifications.filter(read_at__isnull=True).update(read_at=timezone.now())
-    return notifications.filter(read_at__isnull=False).update(read_at=None)
+        return writable.filter(read_at__isnull=True).update(read_at=timezone.now())
+    return writable.filter(read_at__isnull=False).update(read_at=None)
 
 
 def mark_all_notifications_read(*, user):
     # One UPDATE: notifications committed after its statement snapshot stay unread.
-    return (
-        Notification.objects.visible_to(user)
-        .filter(read_at__isnull=True)
-        .update(read_at=timezone.now())
-    )
+    return Notification.objects.filter(
+        pk__in=Notification.objects.visible_to(user).values("pk"), read_at__isnull=True
+    ).update(read_at=timezone.now())
