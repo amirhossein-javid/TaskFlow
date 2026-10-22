@@ -10,8 +10,11 @@ class WorkspaceAccessMixin(LoginRequiredMixin):
     membership = None
 
     def dispatch(self, request, *args, **kwargs):
-        if not request.user.is_authenticated:
-            return self.handle_no_permission()
+        if (
+            not request.user.is_authenticated
+            or request.method.lower() not in self.http_method_names
+        ):
+            return super().dispatch(request, *args, **kwargs)
         self.workspace, self.membership = get_workspace_membership(
             user=request.user,
             slug=kwargs["slug"],

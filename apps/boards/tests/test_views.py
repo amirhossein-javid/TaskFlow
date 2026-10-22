@@ -39,6 +39,18 @@ def context():
     }
 
 
+@pytest.fixture
+def access_context(context):
+    admin = User.objects.create_user(email="admin@example.com", password="SecurePass123!")
+    WorkspaceMembership.objects.create(
+        workspace=context["workspace"],
+        user=admin,
+        role=WorkspaceMembership.Role.ADMIN,
+    )
+    context["admin"] = admin
+    return context
+
+
 def board_url(context):
     return reverse(
         "boards:detail",
@@ -90,6 +102,65 @@ def test_read_only_board_pages_accept_head_and_reject_post(client, context):
         assert client.post(url).status_code == 405
         assert client.put(url).status_code == 405
         assert client.options(url).status_code == 405
+
+
+@pytest.mark.parametrize("method", ["get", "post", "put", "head", "options"])
+@pytest.mark.parametrize(
+    ("actor", "post_statuses"),
+    [
+        ("anonymous", (302, 302, 302)),
+        ("outsider", (404, 404, 404)),
+        ("member", (403, 403, 403)),
+        ("admin", (403, 302, 302)),
+        ("owner", (302, 302, 302)),
+    ],
+)
+def test_access_mixins_validate_method_before_resolution(
+    client,
+    access_context,
+    actor,
+    post_statuses,
+    method,
+):
+    if actor != "anonymous":
+        client.force_login(access_context[actor])
+
+    urls_and_data = [
+        (
+            reverse(
+                "workspaces:change_role",
+                args=[
+                    access_context["workspace"].slug,
+                    access_context["member_membership"].pk,
+                ],
+            ),
+            {"role": WorkspaceMembership.Role.MEMBER},
+        ),
+        (
+            reverse(
+                "projects:restore",
+                args=[access_context["workspace"].slug, access_context["project"].pk],
+            ),
+            {},
+        ),
+        (
+            reverse(
+                "boards:column_create",
+                args=[access_context["workspace"].slug, access_context["project"].pk],
+            ),
+            {"name": "Review"},
+        ),
+    ]
+    responses = [getattr(client, method)(url, data) for url, data in urls_and_data]
+
+    if method == "post":
+        assert tuple(response.status_code for response in responses) == post_statuses
+    elif actor == "anonymous":
+        assert all(response.status_code == 302 for response in responses)
+        assert all(reverse("accounts:login") in response.url for response in responses)
+    else:
+        assert all(response.status_code == 405 for response in responses)
+        assert all(response.headers["Allow"] == "POST" for response in responses)
 
 
 def test_board_form_and_action_views_preserve_original_method_contracts(client, context):
