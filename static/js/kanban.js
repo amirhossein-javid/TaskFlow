@@ -1,6 +1,6 @@
 (() => {
     const board = document.querySelector("[data-kanban-board]");
-    if (!board) return;
+    if (!board || board.dataset.canMove !== "true") return;
 
     const status = document.querySelector("[data-kanban-status]");
     let draggedCard = null;
@@ -25,7 +25,7 @@
 
     board.addEventListener("dragstart", (event) => {
         const card = event.target.closest("[data-task-id]");
-        if (!card) return;
+        if (!card || card.draggable !== true) return;
         draggedCard = card;
         card.classList.add("is-dragging");
         event.dataTransfer.effectAllowed = "move";
