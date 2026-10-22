@@ -10,6 +10,7 @@ from apps.boards.models import Task, TaskActivity, TaskComment
 from apps.boards.services import (
     create_task,
     create_task_comment,
+    delete_task,
     delete_task_comment,
     move_task,
     nudge_task,
@@ -253,8 +254,8 @@ def test_concurrent_comment_edit_and_delete_finish_without_deadlock_or_resurrect
     def edit():
         try:
             update_task_comment(comment=edit_comment, actor=member, body="Edited")
-        except ValidationError:
-            pass
+        except ValidationError as error:
+            assert error.messages == ["دیدگاه موردنظر دیگر وجود ندارد."]
 
     def delete():
         delete_task_comment(comment=delete_comment, actor=member)
@@ -270,3 +271,76 @@ def test_concurrent_comment_edit_and_delete_finish_without_deadlock_or_resurrect
     )
     assert events.filter(event_type=TaskActivity.EventType.COMMENT_DELETED).count() == 1
     assert events.filter(event_type=TaskActivity.EventType.COMMENT_EDITED).count() <= 1
+
+    create_race_task = make_task(
+        column=board.columns.first(),
+        actor=member,
+        title="Create while deleting",
+    )
+    stale_create_task = Task.objects.select_related("column").get(pk=create_race_task.pk)
+    stale_delete_task = Task.objects.select_related("column").get(pk=create_race_task.pk)
+
+    def create_during_task_delete():
+        try:
+            create_task_comment(task=stale_create_task, actor=member, body="Racing")
+        except ValidationError as error:
+            assert error.messages == ["وظیفهٔ مربوط به دیدگاه دیگر وجود ندارد."]
+
+    run_concurrently(
+        create_during_task_delete,
+        lambda: delete_task(task=stale_delete_task, actor=member),
+    )
+
+    assert not Task.objects.filter(pk=create_race_task.pk).exists()
+    assert not TaskComment.objects.filter(task_id=create_race_task.pk).exists()
+    create_race_events = TaskActivity.objects.filter(
+        project=board.project,
+        task_title="Create while deleting",
+    )
+    assert create_race_events.filter(event_type=TaskActivity.EventType.TASK_DELETED).count() == 1
+    assert create_race_events.filter(event_type=TaskActivity.EventType.COMMENT_CREATED).count() in {
+        0,
+        1,
+    }
+
+    edit_race_task = make_task(
+        column=board.columns.first(),
+        actor=member,
+        title="Edit while deleting",
+    )
+    edit_race_comment = create_task_comment(
+        task=edit_race_task,
+        actor=member,
+        body="Original",
+    )
+    stale_edit_comment = TaskComment.objects.select_related("task__column").get(
+        pk=edit_race_comment.pk
+    )
+    stale_task_for_delete = Task.objects.select_related("column").get(pk=edit_race_task.pk)
+
+    def edit_during_task_delete():
+        try:
+            update_task_comment(
+                comment=stale_edit_comment,
+                actor=member,
+                body="Edited",
+            )
+        except ValidationError as error:
+            assert error.messages == ["وظیفهٔ مربوط به دیدگاه دیگر وجود ندارد."]
+
+    run_concurrently(
+        edit_during_task_delete,
+        lambda: delete_task(task=stale_task_for_delete, actor=member),
+    )
+
+    assert not Task.objects.filter(pk=edit_race_task.pk).exists()
+    assert not TaskComment.objects.filter(pk=edit_race_comment.pk).exists()
+    edit_race_events = TaskActivity.objects.filter(
+        project=board.project,
+        task_title="Edit while deleting",
+    )
+    assert edit_race_events.filter(event_type=TaskActivity.EventType.TASK_DELETED).count() == 1
+    assert edit_race_events.filter(event_type=TaskActivity.EventType.COMMENT_EDITED).count() in {
+        0,
+        1,
+    }

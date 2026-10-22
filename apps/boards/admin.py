@@ -3,6 +3,21 @@ from django.contrib import admin
 from .models import Board, BoardColumn, Task, TaskActivity, TaskComment
 
 
+class ReadOnlyAdminMixin:
+    """Allow inspection while preventing all admin mutation paths."""
+
+    actions = None
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 class BoardColumnInline(admin.TabularInline):
     model = BoardColumn
     extra = 0
@@ -21,21 +36,21 @@ class BoardAdmin(admin.ModelAdmin):
 
 
 @admin.register(Task)
-class TaskAdmin(admin.ModelAdmin):
+class TaskAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ("title", "column", "priority", "assignee", "due_date")
     list_filter = ("priority", "column__board__project__workspace")
     search_fields = ("title", "description", "column__board__project__name")
 
 
 @admin.register(TaskComment)
-class TaskCommentAdmin(admin.ModelAdmin):
+class TaskCommentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ("task", "author", "created_at", "updated_at")
     search_fields = ("body", "task__title", "author__email")
     list_filter = ("task__column__board__project__workspace",)
 
 
 @admin.register(TaskActivity)
-class TaskActivityAdmin(admin.ModelAdmin):
+class TaskActivityAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ("task_title", "event_type", "actor", "project", "created_at")
     list_filter = ("event_type", "project__workspace")
     search_fields = ("task_title", "actor__email", "project__name")
@@ -49,12 +64,3 @@ class TaskActivityAdmin(admin.ModelAdmin):
         "schema_version",
         "created_at",
     )
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False

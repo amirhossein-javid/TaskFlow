@@ -135,6 +135,12 @@ def test_member_can_create_and_update_task(board_context):
         TaskActivity.EventType.TASK_UPDATED,
         TaskActivity.EventType.TASK_CREATED,
     ]
+    update_event = task.activities.get(event_type=TaskActivity.EventType.TASK_UPDATED)
+    assignee_event = task.activities.get(event_type=TaskActivity.EventType.ASSIGNEE_CHANGED)
+    assert update_event.metadata == {
+        "changed_fields": ["title", "description", "priority", "due_date"]
+    }
+    assert assignee_event.metadata == {"assignee_id": None}
 
 
 def test_task_activity_skips_no_op_updates_and_incidental_reordering(board_context):
@@ -257,6 +263,8 @@ def test_comment_services_enforce_ownership_and_record_meaningful_activity(board
         actor=board_context["member_membership"],
         body="First comment",
     )
+    comment.refresh_from_db()
+    unchanged_updated_at = comment.updated_at
     updated = update_task_comment(
         comment=comment,
         actor=board_context["member_membership"],
@@ -264,6 +272,7 @@ def test_comment_services_enforce_ownership_and_record_meaningful_activity(board
     )
 
     assert updated.body == "Updated comment"
+    assert updated.updated_at > unchanged_updated_at
     assert list(
         task.activities.filter(event_type__startswith="comment").values_list(
             "event_type", flat=True
@@ -357,6 +366,15 @@ def test_move_task_between_columns_keeps_dense_deterministic_order(board_context
         ("First", 0),
         ("Second", 1),
     ]
+    move_event = first.activities.get(event_type=TaskActivity.EventType.TASK_MOVED)
+    assert move_event.metadata == {
+        "from_column_id": source.pk,
+        "from_column_name": source.name,
+        "from_position": 0,
+        "to_column_id": target.pk,
+        "to_column_name": target.name,
+        "to_position": 0,
+    }
 
 
 def test_move_task_within_column_respects_unique_positions(board_context):

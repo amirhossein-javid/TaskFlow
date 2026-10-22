@@ -3,6 +3,9 @@ import json
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
+from django.db.models import BigIntegerField, Exists, OuterRef
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
@@ -13,7 +16,7 @@ from apps.workspaces.models import WorkspaceMembership
 
 from .forms import BoardColumnForm, TaskCommentForm, TaskForm
 from .mixins import BoardAccessMixin, BoardManagerRequiredMixin
-from .models import Task
+from .models import Task, TaskActivity
 from .services import (
     create_column,
     create_task,
@@ -212,7 +215,22 @@ class TaskDetailView(BoardAccessMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        comments = self.object.comments.select_related("author", "author__profile")
+        edited_activities = (
+            TaskActivity.objects.filter(
+                task=self.object,
+                event_type=TaskActivity.EventType.COMMENT_EDITED,
+            )
+            .annotate(
+                comment_id=Cast(
+                    KeyTextTransform("comment_id", "metadata"),
+                    output_field=BigIntegerField(),
+                )
+            )
+            .filter(comment_id=OuterRef("pk"))
+        )
+        comments = self.object.comments.select_related("author", "author__profile").annotate(
+            was_edited=Exists(edited_activities)
+        )
         activities = self.object.activities.select_related("actor", "actor__profile")
         context["comment_page"] = Paginator(comments, 20).get_page(
             self.request.GET.get("comments_page")

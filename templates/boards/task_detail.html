@@ -62,7 +62,7 @@
                             <div>
                                 <strong>{% if comment.author %}{{ comment.author.profile.full_name|default:comment.author.email }}{% else %}کاربر حذف‌شده{% endif %}</strong>
                                 <time datetime="{{ comment.created_at|date:'c' }}">{{ comment.created_at|date:"Y/m/d H:i" }}</time>
-                                {% if comment.updated_at != comment.created_at %}<span class="muted">· ویرایش‌شده</span>{% endif %}
+                                {% if comment.was_edited %}<span class="muted">· ویرایش‌شده</span>{% endif %}
                             </div>
                             {% if project.status == 'active' and comment.author_id == request.user.id %}
                                 <div class="comment-actions">

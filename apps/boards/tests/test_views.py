@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.boards.models import Task, TaskActivity, TaskComment
-from apps.boards.services import create_task, create_task_comment
+from apps.boards.services import create_task, create_task_comment, update_task_comment
 from apps.projects.models import Project
 from apps.workspaces.models import WorkspaceMembership
 from apps.workspaces.services import create_workspace
@@ -664,6 +664,38 @@ def test_task_detail_paginates_comments_and_activity_independently(client, conte
     assert len(response.context["comment_page"]) == 1
     assert response.context["activity_page"].number == 2
     assert len(response.context["activity_page"]) == 1
+
+
+def test_comment_edited_indicator_tracks_real_edits_only(client, context):
+    task = make_task(context)
+    comment = create_task_comment(
+        task=task,
+        actor=context["member_membership"],
+        body="Original",
+    )
+    client.force_login(context["member"])
+    detail_url = reverse(
+        "boards:task_detail",
+        args=[context["workspace"].slug, context["project"].pk, task.pk],
+    )
+
+    assert "ویرایش‌شده" not in client.get(detail_url).content.decode()
+
+    unchanged_updated_at = comment.updated_at
+    unchanged = update_task_comment(
+        comment=comment,
+        actor=context["member_membership"],
+        body="Original",
+    )
+    assert unchanged.updated_at == unchanged_updated_at
+    assert "ویرایش‌شده" not in client.get(detail_url).content.decode()
+
+    update_task_comment(
+        comment=comment,
+        actor=context["member_membership"],
+        body="Edited",
+    )
+    assert "ویرایش‌شده" in client.get(detail_url).content.decode()
 
 
 def test_comment_endpoints_enforce_methods_and_csrf(context):
