@@ -2,6 +2,8 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import F
 
+from apps.notifications.models import Notification
+from apps.notifications.services import notify_task_assignee
 from apps.projects.models import Project
 from apps.workspaces.models import WorkspaceMembership
 
@@ -518,13 +520,14 @@ def create_task(
     )
     task.full_clean()
     task.save()
-    _record_task_activity(
+    activity = _record_task_activity(
         project=project,
         task=task,
         actor=actor,
         event_type=TaskActivity.EventType.TASK_CREATED,
         metadata={"column_id": column.pk, "column_name": column.name},
     )
+    notify_task_assignee(task=task, activity=activity, kind=Notification.Kind.ASSIGNMENT)
     return task
 
 
@@ -586,13 +589,14 @@ def update_task(
             metadata={"changed_fields": changed_fields},
         )
     if assignee_changed:
-        _record_task_activity(
+        activity = _record_task_activity(
             project=project,
             task=task,
             actor=actor,
             event_type=TaskActivity.EventType.ASSIGNEE_CHANGED,
             metadata={"assignee_id": normalized_assignee_id},
         )
+        notify_task_assignee(task=task, activity=activity, kind=Notification.Kind.ASSIGNMENT)
     return task
 
 
@@ -646,7 +650,7 @@ def move_task(
         target_position=target_position,
     )
     if (source_column_id, source_position) != (moved_task.column_id, moved_task.position):
-        _record_task_activity(
+        activity = _record_task_activity(
             project=project,
             task=moved_task,
             actor=actor,
@@ -660,6 +664,10 @@ def move_task(
                 "to_position": moved_task.position,
             },
         )
+        if source_column_id != moved_task.column_id:
+            notify_task_assignee(
+                task=moved_task, activity=activity, kind=Notification.Kind.COLUMN_CHANGE
+            )
     return moved_task
 
 
@@ -710,7 +718,7 @@ def nudge_task(
         target_position=target_position,
     )
     if (source_column_id, source_position) != (moved_task.column_id, moved_task.position):
-        _record_task_activity(
+        activity = _record_task_activity(
             project=project,
             task=moved_task,
             actor=actor,
@@ -724,6 +732,10 @@ def nudge_task(
                 "to_position": moved_task.position,
             },
         )
+        if source_column_id != moved_task.column_id:
+            notify_task_assignee(
+                task=moved_task, activity=activity, kind=Notification.Kind.COLUMN_CHANGE
+            )
     return moved_task
 
 
@@ -741,13 +753,14 @@ def create_task_comment(
     comment = TaskComment(task=task, author=actor.user, body=body.strip())
     comment.full_clean()
     comment.save()
-    _record_task_activity(
+    activity = _record_task_activity(
         project=project,
         task=task,
         actor=actor,
         event_type=TaskActivity.EventType.COMMENT_CREATED,
         metadata={"comment_id": comment.pk},
     )
+    notify_task_assignee(task=task, activity=activity, kind=Notification.Kind.COMMENT)
     return comment
 
 

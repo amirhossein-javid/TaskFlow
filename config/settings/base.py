@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     "apps.workspaces.apps.WorkspacesConfig",
     "apps.projects.apps.ProjectsConfig",
     "apps.boards.apps.BoardsConfig",
+    "apps.notifications.apps.NotificationsConfig",
 ]
 
 MIDDLEWARE = [
