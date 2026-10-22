@@ -39,8 +39,13 @@ without memberships retain normal Admin deletion and Profile cascade behavior.
 Workspace settings revalidate the current owner's role inside a transaction.
 Workspace deletion locks the workspace, its projects in primary-key order, then
 memberships in primary-key order before cascading. Project locks precede membership
-locks to coordinate with board mutations. Invitation acceptance locks the workspace
-before the invitation so it also serializes safely with workspace deletion.
+locks to coordinate with board mutations. Invitation acceptance first locks the
+accepting User with `NO KEY UPDATE`, then the workspace and invitation. This
+serializes account deletion before workspace locks while allowing other writes'
+deferred User foreign-key checks to commit. If account deletion commits first,
+acceptance rejects the invitation; if acceptance commits first, Admin refuses to
+delete the now-member account. The workspace-before-invitation order also
+coordinates acceptance with workspace deletion.
 
 ## Authentication and profiles
 

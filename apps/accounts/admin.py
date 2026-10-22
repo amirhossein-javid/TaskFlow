@@ -39,10 +39,18 @@ class UserAdmin(BaseUserAdmin):
     def delete_queryset(self, request, queryset):
         # Block new membership FK references until deletion commits. Existing
         # members must leave through the owner-safe workspace services first.
-        users = list(queryset.select_for_update().order_by("pk"))
-        if any(user.workspace_memberships.exists() for user in users):
-            raise PermissionDenied("برای حذف حساب، ابتدا عضویت‌های فضای کاری را پایان دهید.")
-        super().delete_queryset(request, queryset)
+        user_ids = list(queryset.order_by("pk").values_list("pk", flat=True))
+        locked_ids = []
+        for user_id in user_ids:
+            user = queryset.select_for_update(of=("self",)).filter(pk=user_id).first()
+            if user is None:
+                continue
+            # Reject members before waiting on any later User: a workspace
+            # writer may need KEY SHARE on this User to release its locks.
+            if user.workspace_memberships.exists():
+                raise PermissionDenied("برای حذف حساب، ابتدا عضویت‌های فضای کاری را پایان دهید.")
+            locked_ids.append(user.pk)
+        super().delete_queryset(request, queryset.filter(pk__in=locked_ids))
 
     def delete_model(self, request, obj):
         self.delete_queryset(request, User.objects.filter(pk=obj.pk))

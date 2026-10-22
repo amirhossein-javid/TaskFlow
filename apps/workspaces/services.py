@@ -185,6 +185,12 @@ def accept_invitation(*, token: str, user: User) -> WorkspaceMembership:
     )
     if workspace_id is None:
         raise InvalidInvitation
+    # Serialize account deletion before taking workspace locks: its SET_NULL
+    # updates may need this workspace. NO KEY UPDATE still allows unrelated
+    # writes to commit deferred User FK checks using KEY SHARE.
+    user = User.objects.select_for_update(no_key=True).filter(pk=user.pk).first()
+    if user is None:
+        raise InvalidInvitation
     if not Workspace.objects.select_for_update().filter(pk=workspace_id).exists():
         raise InvalidInvitation
     invitation = (

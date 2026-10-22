@@ -18,7 +18,7 @@ from .mixins import (
     WorkspaceManagerRequiredMixin,
     WorkspaceOwnerRequiredMixin,
 )
-from .models import WorkspaceInvitation, WorkspaceMembership
+from .models import Workspace, WorkspaceInvitation, WorkspaceMembership
 from .services import (
     InvalidInvitation,
     accept_invitation,
@@ -98,6 +98,8 @@ class WorkspaceSettingsView(WorkspaceOwnerRequiredMixin, UpdateView):
             self.object = update_workspace(
                 workspace=self.workspace, actor=self.membership, **form.cleaned_data
             )
+        except Workspace.DoesNotExist as error:
+            raise Http404 from error
         except ValidationError as error:
             form.add_error(None, error)
             return self.form_invalid(form)
@@ -264,6 +266,8 @@ class WorkspaceDeleteView(WorkspaceOwnerRequiredMixin, FormView):
                 actor=self.membership,
                 confirmation=form.cleaned_data["confirmation"],
             )
+        except Workspace.DoesNotExist as error:
+            raise Http404 from error
         except ValidationError as error:
             form.add_error("confirmation", error)
             return self.form_invalid(form)
