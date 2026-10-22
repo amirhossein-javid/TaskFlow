@@ -29,6 +29,19 @@ docker compose run --rm web python manage.py createsuperuser
 
 The Django Admin is available at `http://localhost:8000/admin/`.
 
+Workspace, invitation, project, board, and collaboration Admin pages are read-only.
+Use the application workflows for domain changes so authorization, ownership,
+archival rules, and ordering locks remain enforced. Accounts with workspace
+memberships cannot be deleted in Admin, including through bulk deletion; first
+end their memberships through the owner-safe application workflows. Accounts
+without memberships retain normal Admin deletion and Profile cascade behavior.
+
+Workspace settings revalidate the current owner's role inside a transaction.
+Workspace deletion locks the workspace, its projects in primary-key order, then
+memberships in primary-key order before cascading. Project locks precede membership
+locks to coordinate with board mutations. Invitation acceptance locks the workspace
+before the invitation so it also serializes safely with workspace deletion.
+
 ## Authentication and profiles
 
 The accounts application provides:

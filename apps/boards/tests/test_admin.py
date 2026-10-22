@@ -100,3 +100,26 @@ def test_admin_cannot_bypass_archived_project_or_create_activity(client, admin_c
     assert task.title == "Protected task"
     assert comment.body == "Protected comment"
     assert TaskActivity.objects.filter(project=project).count() == activity_count
+
+
+def test_board_admin_and_column_inline_are_read_only(client, admin_context):
+    user, project, *_ = admin_context
+    client.force_login(user)
+    board = project.board
+    original = list(board.columns.values())
+    url = reverse("admin:boards_board_change", args=[board.pk])
+    response = client.get(url)
+    assert response.status_code == 200
+    inline = response.context["inline_admin_formsets"][0]
+    assert not inline.has_add_permission
+    assert not inline.has_change_permission
+    assert not inline.has_delete_permission
+    assert client.post(url, {"project": project.pk}).status_code == 403
+    assert client.get(reverse("admin:boards_board_add")).status_code == 403
+    assert client.post(reverse("admin:boards_board_delete", args=[board.pk])).status_code == 403
+    client.post(
+        reverse("admin:boards_board_changelist"),
+        {"action": "delete_selected", "_selected_action": [board.pk], "post": "yes"},
+    )
+    assert list(board.columns.values()) == original
+    board.refresh_from_db()

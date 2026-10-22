@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import User
+from apps.projects.models import Project
 
 from .models import Workspace, WorkspaceInvitation, WorkspaceMembership
 
@@ -50,6 +51,37 @@ def _owner_count(memberships: dict[int, WorkspaceMembership]) -> int:
     return sum(
         membership.role == WorkspaceMembership.Role.OWNER for membership in memberships.values()
     )
+
+
+def _require_current_owner(*, memberships, actor):
+    current = memberships.get(actor.pk)
+    if current is None or current.role != WorkspaceMembership.Role.OWNER:
+        raise PermissionDenied
+
+
+@transaction.atomic
+def update_workspace(*, workspace: Workspace, actor: WorkspaceMembership, name: str, slug: str):
+    workspace = Workspace.objects.select_for_update().get(pk=workspace.pk)
+    memberships = _locked_membership_state(workspace.pk)
+    _require_current_owner(memberships=memberships, actor=actor)
+    workspace.name = name
+    workspace.slug = slug.strip().lower()
+    workspace.full_clean()
+    workspace.save(update_fields=["name", "slug", "updated_at"])
+    return workspace
+
+
+@transaction.atomic
+def delete_workspace(*, workspace: Workspace, actor: WorkspaceMembership, confirmation: str):
+    workspace = Workspace.objects.select_for_update().get(pk=workspace.pk)
+    # Board/project services lock projects before memberships. Acquire these
+    # gates before membership locks so cascading deletion cannot invert them.
+    list(Project.objects.select_for_update().filter(workspace=workspace).order_by("pk"))
+    memberships = _locked_membership_state(workspace.pk)
+    _require_current_owner(memberships=memberships, actor=actor)
+    if confirmation.strip() != workspace.name:
+        raise ValidationError("نام واردشده با نام فضای کاری یکسان نیست.")
+    workspace.delete()
 
 
 @transaction.atomic
@@ -145,10 +177,20 @@ def create_invitation(
 
 @transaction.atomic
 def accept_invitation(*, token: str, user: User) -> WorkspaceMembership:
+    token_hash = WorkspaceInvitation.digest_token(token)
+    workspace_id = (
+        WorkspaceInvitation.objects.filter(token_hash=token_hash)
+        .values_list("workspace_id", flat=True)
+        .first()
+    )
+    if workspace_id is None:
+        raise InvalidInvitation
+    if not Workspace.objects.select_for_update().filter(pk=workspace_id).exists():
+        raise InvalidInvitation
     invitation = (
-        WorkspaceInvitation.objects.select_for_update()
+        WorkspaceInvitation.objects.select_for_update(of=("self",))
         .select_related("workspace")
-        .filter(token_hash=WorkspaceInvitation.digest_token(token))
+        .filter(token_hash=token_hash, workspace_id=workspace_id)
         .first()
     )
     if not invitation or not invitation.is_pending:

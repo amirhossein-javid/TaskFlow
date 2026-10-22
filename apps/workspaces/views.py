@@ -19,15 +19,16 @@ from .mixins import (
     WorkspaceOwnerRequiredMixin,
 )
 from .models import WorkspaceInvitation, WorkspaceMembership
-from .permissions import require_owner
 from .services import (
     InvalidInvitation,
     accept_invitation,
     change_membership_role,
     create_invitation,
     create_workspace,
+    delete_workspace,
     leave_workspace,
     remove_membership,
+    update_workspace,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,13 @@ class WorkspaceSettingsView(WorkspaceOwnerRequiredMixin, UpdateView):
         return self.workspace
 
     def form_valid(self, form):
-        self.object = form.save()
+        try:
+            self.object = update_workspace(
+                workspace=self.workspace, actor=self.membership, **form.cleaned_data
+            )
+        except ValidationError as error:
+            form.add_error(None, error)
+            return self.form_invalid(form)
         messages.success(self.request, "تنظیمات فضای کاری ذخیره شد.")
         return redirect("workspaces:settings", slug=self.object.slug)
 
@@ -251,13 +258,15 @@ class WorkspaceDeleteView(WorkspaceOwnerRequiredMixin, FormView):
         return kwargs
 
     def form_valid(self, form):
-        with transaction.atomic():
-            locked_membership = WorkspaceMembership.objects.select_for_update().get(
+        try:
+            delete_workspace(
                 workspace=self.workspace,
-                user=self.request.user,
+                actor=self.membership,
+                confirmation=form.cleaned_data["confirmation"],
             )
-            require_owner(locked_membership)
-            self.workspace.delete()
+        except ValidationError as error:
+            form.add_error("confirmation", error)
+            return self.form_invalid(form)
         messages.success(self.request, "فضای کاری برای همیشه حذف شد.")
         return redirect("workspaces:list")
 
