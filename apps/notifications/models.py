@@ -1,7 +1,30 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import Exists, F, OuterRef
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+
+from apps.boards.models import Task
+
+
+class NotificationQuerySet(models.QuerySet):
+    def visible_to(self, user):
+        if not user.is_authenticated or not user.is_active:
+            return self.none()
+        # Mirror BoardAccessMixin.get_task / ProjectAccessMixin: the task must
+        # belong to a project in a workspace the user can currently access.
+        # Archived projects remain readable. Never use historical membership.
+        accessible_tasks = Task.objects.filter(
+            pk=OuterRef("task_id"),
+            column__board__project__workspace__memberships__user_id=user.pk,
+        )
+        return self.alias(can_view_task=Exists(accessible_tasks)).filter(
+            recipient_id=user.pk,
+            recipient__is_active=True,
+            can_view_task=True,
+            activity__task_id=F("task_id"),
+            activity__project_id=F("task__column__board__project_id"),
+        )
 
 
 class Notification(models.Model):
@@ -31,6 +54,8 @@ class Notification(models.Model):
     kind = models.CharField(_("نوع اعلان"), max_length=20, choices=Kind.choices)
     created_at = models.DateTimeField(_("تاریخ ایجاد"), default=timezone.now)
     read_at = models.DateTimeField(_("تاریخ خواندن"), null=True, blank=True)
+
+    objects = NotificationQuerySet.as_manager()
 
     class Meta:
         ordering = ["-created_at", "-id"]

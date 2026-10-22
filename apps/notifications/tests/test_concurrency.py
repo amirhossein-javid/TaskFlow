@@ -32,3 +32,82 @@ def test_concurrent_comments_each_notify_once(context, assigned_task):
     )
     assert Notification.objects.filter(kind=Notification.Kind.COMMENT).count() == 2
     assert assigned_task.comments.count() == 2
+
+
+def test_concurrent_read_requests_preserve_first_read_time(context, assigned_task):
+    from apps.notifications.services import set_notification_read
+
+    note = Notification.objects.get()
+    user = context["member"].user
+    run_concurrently(
+        *[
+            lambda: set_notification_read(user=user, notification_id=note.pk, read=True)
+            for _ in range(2)
+        ]
+    )
+    note.refresh_from_db()
+    first_read = note.read_at
+    assert first_read is not None
+    assert set_notification_read(user=user, notification_id=note.pk, read=True) == 0
+    note.refresh_from_db()
+    assert note.read_at == first_read
+
+
+def test_membership_removal_and_comment_creation_do_not_deadlock(context, assigned_task):
+    from apps.workspaces.services import remove_membership
+
+    run_concurrently(
+        lambda: remove_membership(actor=context["actor"], target=context["member"]),
+        lambda: create_task_comment(task=assigned_task, actor=context["actor"], body="Concurrent"),
+    )
+    assert assigned_task.comments.count() == 1
+    assert not Notification.objects.visible_to(context["member"].user).exists()
+
+
+def test_read_all_uses_statement_snapshot_and_leaves_later_notification_unread(
+    context, assigned_task
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from queue import Queue
+    from threading import Event
+    from time import monotonic
+
+    from django.db import close_old_connections, connection, transaction
+
+    from apps.notifications.services import mark_all_notifications_read
+
+    backend_ids = Queue()
+    note = Notification.objects.get()
+
+    def mark_all():
+        close_old_connections()
+        try:
+            connection.ensure_connection()
+            backend_ids.put(connection.connection.info.backend_pid)
+            return mark_all_notifications_read(user=context["member"].user)
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with transaction.atomic():
+            Notification.objects.select_for_update().get(pk=note.pk)
+            future = executor.submit(mark_all)
+            backend_id = backend_ids.get(timeout=5)
+            deadline = monotonic() + 5
+            while True:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_stat_clear_snapshot()")
+                    cursor.execute(
+                        "SELECT wait_event_type FROM pg_stat_activity WHERE pid = %s", [backend_id]
+                    )
+                    waiting = cursor.fetchone()[0] == "Lock"
+                if waiting:
+                    break
+                assert monotonic() < deadline, "Read-all did not reach the row lock"
+                Event().wait(0.01)
+            create_task_comment(task=assigned_task, actor=context["actor"], body="After snapshot")
+        assert future.result(timeout=10) == 1
+    note.refresh_from_db()
+    assert note.read_at is not None
+    later = Notification.objects.get(kind=Notification.Kind.COMMENT)
+    assert later.read_at is None

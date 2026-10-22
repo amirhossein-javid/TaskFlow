@@ -7,6 +7,7 @@ from django.views.generic import TemplateView
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("apps.accounts.urls")),
+    path("notifications/", include("apps.notifications.urls")),
     path(
         "workspaces/<slug:slug>/projects/<int:project_id>/board/",
         include("apps.boards.urls"),
