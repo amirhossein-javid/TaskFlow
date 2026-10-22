@@ -188,3 +188,63 @@ def test_read_requests_waiting_on_same_row_update_only_once(context, assigned_ta
                 assert monotonic() < deadline, "Read requests did not reach their row locks"
                 Event().wait(0.01)
         assert sorted(future.result(timeout=10) for future in futures) == [0, 1]
+
+
+def test_cross_project_reciprocal_comments_do_not_deadlock(context, assigned_task):
+    from threading import Barrier
+
+    from django.db import connection, transaction
+
+    from apps.boards.services import create_task
+    from apps.projects.models import Project
+
+    second_project = Project.objects.create(
+        workspace=context["board"].project.workspace,
+        creator=context["actor"].user,
+        name="Second project",
+    )
+    second_task = create_task(
+        column=second_project.board.columns.first(),
+        actor=context["member"],
+        title="Reciprocal task",
+        description="",
+        priority=assigned_task.priority,
+        due_date=None,
+        assignee=context["actor"].user,
+    )
+    ready_to_commit = Barrier(2)
+
+    def comment(task, actor):
+        # Keep both service transactions open until both actors have acquired
+        # their locks and inserted notifications. Deferred recipient FK checks
+        # then run concurrently at commit, exposing accidental User row locks.
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("SET LOCAL lock_timeout = '5s'")
+                cursor.execute("SET LOCAL statement_timeout = '10s'")
+            create_task_comment(task=task, actor=actor, body="Reciprocal comment")
+            ready_to_commit.wait(timeout=5)
+
+    # The shared runner starts each action on an independent connection and
+    # bounds both the initial barrier and future completion.
+    run_concurrently(
+        lambda: comment(assigned_task, context["actor"]),
+        lambda: comment(second_task, context["member"]),
+    )
+    notes = list(
+        Notification.objects.filter(kind=Notification.Kind.COMMENT).select_related("activity")
+    )
+    assert len(notes) == 2
+    assert {(note.task_id, note.activity.actor_id, note.recipient_id) for note in notes} == {
+        (assigned_task.pk, context["actor"].user_id, context["member"].user_id),
+        (second_task.pk, context["member"].user_id, context["actor"].user_id),
+    }
+    for task, project in [(assigned_task, context["board"].project), (second_task, second_project)]:
+        saved_comment = task.comments.get()
+        note = next(note for note in notes if note.task_id == task.pk)
+        assert note.activity.task_id == task.pk
+        assert note.activity.project_id == project.pk
+        assert note.activity.event_type == "comment_created"
+        assert note.activity.metadata == {"comment_id": saved_comment.pk}
+        task.refresh_from_db()
+        assert task.position == 0

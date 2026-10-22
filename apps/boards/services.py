@@ -285,7 +285,7 @@ def _locked_project_board(*, board_id: int) -> tuple[Project, Board]:
 
 def _locked_actor(*, membership_id: int, workspace_id: int) -> WorkspaceMembership:
     membership = (
-        WorkspaceMembership.objects.select_for_update()
+        WorkspaceMembership.objects.select_for_update(of=("self",))
         .select_related("user")
         .filter(pk=membership_id, workspace_id=workspace_id)
         .first()
