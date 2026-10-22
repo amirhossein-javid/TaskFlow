@@ -21,6 +21,11 @@ from .services import (
 
 
 class ChecklistAccessMixin(BoardAccessMixin):
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["task"] = self.task
+        return context
+
     def check_workspace_permission(self):
         super().check_workspace_permission()
         self.task = self.get_task()
@@ -129,6 +134,7 @@ class ChecklistDeleteView(ChecklistAccessMixin, View):
             {
                 "workspace": self.workspace,
                 "project": self.project,
+                "task": self.task,
                 "heading": "حذف مورد چک‌لیست" if self.item else "حذف چک‌لیست و موارد آن",
                 "object_title": self.item.text if self.item else self.checklist.title,
             },

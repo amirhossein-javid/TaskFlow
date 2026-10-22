@@ -5,6 +5,6 @@
     <h1>{{ heading }}</h1>
     <p>آیا «{{ object_title }}» حذف شود؟ این عملیات قابل بازگشت نیست.</p>
     <form method="post">{% csrf_token %}<button class="button" type="submit">تأیید حذف</button></form>
-    <a href="{% url 'boards:detail' workspace.slug project.pk %}">انصراف و بازگشت به برد</a>
+    {% if task %}<a href="{% url 'boards:task_detail' workspace.slug project.pk task.pk %}">انصراف و بازگشت به وظیفه</a>{% else %}<a href="{% url 'boards:detail' workspace.slug project.pk %}">انصراف و بازگشت به برد</a>{% endif %}
 </section>
 {% endblock %}

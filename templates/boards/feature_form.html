@@ -2,7 +2,7 @@
 {% block title %}{{ heading }} | TaskFlow{% endblock %}
 {% block content %}
 <section class="workspace-page page-width">
-    <a class="back-link" href="{% url 'boards:detail' workspace.slug project.pk %}">→ بازگشت به برد</a>
+    {% if task %}<a class="back-link" href="{% url 'boards:task_detail' workspace.slug project.pk task.pk %}">→ بازگشت به وظیفه</a>{% else %}<a class="back-link" href="{% url 'boards:detail' workspace.slug project.pk %}">→ بازگشت به برد</a>{% endif %}
     <div class="collaboration-card task-form-card">
         <h1>{{ heading }}</h1>
         <form method="post">

@@ -1,6 +1,6 @@
 # TaskFlow
 
-TaskFlow is a team task management application built with Django 5.2, PostgreSQL, Django Templates, and vanilla JavaScript. Features through Phase 6 include email-based authentication, workspaces with role-based access, project Kanban boards, task comments and activity history, and task search, filtering, and sorting. The responsive Persian RTL interface supports light and dark themes.
+TaskFlow is a team task management application built with Django 5.2, PostgreSQL, Django Templates, and vanilla JavaScript. Features through Phase 7 include email-based authentication, workspaces with role-based access, project Kanban boards, comments and activity history, task search and filtering, project labels, and task checklists. The responsive Persian RTL interface supports light and dark themes.
 
 ## Requirements
 
@@ -161,6 +161,14 @@ Tasks can be sorted within each column by creation date, due date, or priority i
 Search, filters, and sorting use GET parameters, so the URL preserves the selected state for sharing, refresh, and browser navigation. Invalid filters display Persian validation errors and return no tasks. All columns remain visible, with counts reflecting the displayed results.
 
 Task drag and drop, task move buttons, and column ordering controls are disabled whenever filtering or non-default sorting is active. Clearing the filters restores the complete, manual-order view and its move controls for active projects. Archived boards remain searchable and read-only.
+
+### Project labels and task checklists (Phase 7)
+
+Owners and Admins manage project-scoped labels with a fixed color palette and case-insensitive name uniqueness. Workspace members attach or detach multiple labels on tasks in the same project. Shared-label renames, color changes, and deletion do not generate per-task activity; explicit attachment and detachment do.
+
+Members collaboratively create, edit, and delete multiple checklists per task and their items, and mark items complete or reopen them. Checklists and items retain creation order, with no manual reordering. Task detail pages show controls and per-checklist progress; Kanban cards show labels and aggregated completed/total item counts. Archived projects remain read-only. Meaningful task-specific changes record transactional activity; no-op changes and cascading child deletions do not generate extra events.
+
+All writes go through scoped services. The database enforces foreign keys, valid colors, nonblank text, and unique label names and task-label pairs. Cross-project assignment is validated by the model and service; direct ORM or SQL writes that bypass services are unsupported. Feature Admin interfaces are read-only.
 
 ## Language conventions
 

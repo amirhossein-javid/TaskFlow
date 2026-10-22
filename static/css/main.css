@@ -1089,6 +1089,24 @@ h3 {
 .task-form-card { width: min(100%, 41rem); }
 .task-form-card select { width: 100%; }
 .task-detail-card { margin-top: 1rem; }
+.task-features { margin-top: 1rem; }
+.task-labels { display: flex; flex-wrap: wrap; gap: .4rem; margin-block: .5rem; }
+.task-label { display: inline-flex; align-items: center; gap: .35rem; max-width: 100%; padding: .25rem .55rem; border: 1px solid currentColor; border-radius: var(--radius-md); font-size: .75rem; overflow-wrap: anywhere; }
+.label-blue { color: var(--accent-700); background: var(--accent-100); }
+.label-green { color: var(--success); background: var(--success-bg); }
+.label-red { color: var(--danger); background: var(--danger-bg); }
+.label-purple { color: var(--text-primary); background: var(--accent-100); border-inline-start: .4rem solid #a78bfa; }
+.label-amber { color: var(--text-primary); background: var(--bg-subtle); border-inline-start: .4rem solid #d97706; }
+.label-gray { color: var(--text-secondary); background: var(--bg-subtle); }
+.task-label-list, .checklist-items { padding: 0; list-style: none; }
+.task-label-list form { display: inline-flex; }
+.feature-inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; }
+.feature-inline-form .field-control { flex: 1 1 12rem; min-width: 0; }
+.task-checklist { margin-top: 1rem; padding-block: .75rem; border-top: 1px solid var(--border-subtle); }
+.checklist-item { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; padding-block: .7rem; border-bottom: 1px solid var(--border-subtle); overflow-wrap: anywhere; }
+.checklist-item.is-completed .checklist-item-text { text-decoration: line-through; }
+.checklist-progress { display: grid; gap: .35rem; margin-block: .6rem; font-size: .75rem; color: var(--text-secondary); }
+.checklist-progress progress { width: 100%; height: .7rem; accent-color: var(--accent-600); }
 .task-detail-card h1 { margin: .8rem 0 0; font-size: clamp(1.45rem, 5vw, 2rem); }
 
 .task-collaboration-grid {

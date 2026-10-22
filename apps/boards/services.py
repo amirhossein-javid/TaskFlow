@@ -240,7 +240,9 @@ def _locked_task_context(*, task: Task, actor: WorkspaceMembership):
     project, board = _locked_project_board(board_id=task.column.board_id)
     actor = _locked_actor(membership_id=actor.pk, workspace_id=project.workspace_id)
     _require_active(project)
-    task = Task.objects.select_for_update().filter(pk=task.pk, column__board=board).first()
+    task = (
+        Task.objects.select_for_update(of=("self",)).filter(pk=task.pk, column__board=board).first()
+    )
     if task is None:
         raise ValidationError("وظیفهٔ موردنظر پیدا نشد.")
     return project, task, actor
