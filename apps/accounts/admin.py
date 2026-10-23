@@ -4,7 +4,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 
 from .db import is_email_conflict
-from .forms import UserChangeForm, UserCreationForm
+from .forms import ProfileAdminForm, UserChangeForm, UserCreationForm
 from .models import Profile, User
 
 
@@ -90,6 +90,7 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
+    form = ProfileAdminForm
     list_display = ("user", "full_name", "created_at")
     search_fields = ("user__email", "full_name")
     readonly_fields = ("created_at",)

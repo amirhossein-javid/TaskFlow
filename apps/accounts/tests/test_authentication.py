@@ -177,7 +177,8 @@ def test_profile_accepts_valid_avatar(client, tmp_path):
 
     assert response.status_code == 302
     user.profile.refresh_from_db()
-    assert user.profile.avatar.name.startswith("avatars/avatar")
+    assert user.profile.avatar.name.startswith("avatars/")
+    assert user.profile.avatar.name.endswith(".png")
 
 
 @pytest.mark.django_db
