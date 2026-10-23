@@ -30,6 +30,10 @@ def send_invitation_email(*, invitation, workspace_name, accept_url):
         # Neither retries nor SMTP exceptions prove the original message was not sent.
         delivered = 0
     if delivered != 1:
-        logger.warning("Invitation email submission unconfirmed (invitation_id=%s)", invitation.pk)
+        logger.warning(
+            "Invitation email submission unconfirmed (invitation_id=%s)",
+            invitation.pk,
+            extra={"event": "invitation_email_unconfirmed", "invitation_id": invitation.pk},
+        )
         return False
     return True

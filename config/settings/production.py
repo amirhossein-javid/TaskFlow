@@ -3,8 +3,10 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from config.logging import production_logging
+
 from .base import *  # noqa: F403
-from .base import DATABASES, EMAIL_BACKEND, EMAIL_USE_SSL, EMAIL_USE_TLS, env, env_list
+from .base import DATABASES, EMAIL_BACKEND, EMAIL_USE_SSL, EMAIL_USE_TLS, MIDDLEWARE, env, env_list
 
 
 def secret(name, minimum_length):
@@ -73,6 +75,10 @@ if DATABASES["default"]["USER"] in {"postgres", "taskflow"}:
     raise RuntimeError("Use a dedicated application database role, not the bootstrap role.")
 
 DEBUG = False
+LOGGING = production_logging()
+MIDDLEWARE = ["config.logging.RequestLogMiddleware", *MIDDLEWARE]
+if EMAIL_BACKEND == "django.core.mail.backends.console.EmailBackend":
+    EMAIL_BACKEND = "config.email.SafeConsoleEmailBackend"
 if EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
     if not EMAIL_USE_TLS and not EMAIL_USE_SSL:
         raise RuntimeError("Production SMTP requires TLS or SSL.")

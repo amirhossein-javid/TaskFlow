@@ -1,9 +1,17 @@
 name: taskflow-production
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:17-alpine
+    command: ["postgres", "-c", "log_min_error_statement=panic", "-c", "log_error_verbosity=terse", "-c", "log_parameter_max_length_on_error=0"]
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_DB: taskflow
       POSTGRES_USER: postgres
@@ -24,10 +32,12 @@ services:
       start_period: 5s
 
   web:
+    image: ${TASKFLOW_IMAGE:-taskflow-production-web:local}
     build:
       context: .
       target: runtime
     restart: unless-stopped
+    logging: *logging
     command: ["gunicorn", "--config", "deploy/gunicorn.conf.py", "config.wsgi:application"]
     depends_on:
       db:
@@ -56,10 +66,17 @@ services:
     volumes:
       - media:/app/media
     networks: [proxy, database, outbound]
+    healthcheck:
+      test: ["CMD", "python", "deploy/healthcheck.py"]
+      interval: 30s
+      timeout: 7s
+      retries: 3
+      start_period: 15s
 
   nginx:
     image: nginx:1.30.6-alpine
     restart: unless-stopped
+    logging: *logging
     depends_on: [web]
     environment:
       TASKFLOW_HOST: ${TASKFLOW_HOST:-localhost}

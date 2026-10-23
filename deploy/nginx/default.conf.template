@@ -19,8 +19,21 @@ limit_req_zone $email_key zone=email:1m rate=3r/m;
 limit_req_zone $token_key zone=token:1m rate=30r/m;
 
 # Deliberately omit URI, query strings, cookies and authorization from access logs.
-log_format taskflow '$remote_addr $request_method $status $request_time';
-error_log /dev/stderr warn;
+map $request_method $safe_method {
+    default OTHER;
+    GET GET; HEAD HEAD; POST POST; PUT PUT; PATCH PATCH; DELETE DELETE; OPTIONS OPTIONS;
+}
+map $status $log_event {
+    default proxy_request;
+    ~^5 proxy_error;
+}
+log_format taskflow escape=json '{"event":"$log_event","request_id":"$request_id",'
+    '"method":"$safe_method","status":$status,"duration_seconds":$request_time,'
+    '"upstream_status":"$upstream_status","upstream_seconds":"$upstream_response_time"}';
+# Native HTTP error messages can embed raw request lines/headers and cannot be
+# custom-formatted. Access events above retain safe upstream failure diagnostics.
+# Main-process startup/lifecycle errors still go to the image's stderr logger.
+error_log /dev/null;
 server_tokens off;
 
 server {
@@ -82,6 +95,7 @@ server {
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Request-ID $request_id;
         proxy_set_header X-Forwarded-Host "";
         proxy_set_header Forwarded "";
         proxy_set_header SCRIPT_NAME "";
