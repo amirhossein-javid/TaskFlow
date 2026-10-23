@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from apps.admin import ReadOnlyAdminMixin
+
 from .models import (
     Board,
     BoardColumn,
@@ -13,22 +15,7 @@ from .models import (
 )
 
 
-class ReadOnlyAdminMixin:
-    """Allow inspection while preventing all admin mutation paths."""
-
-    actions = None
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
-class BoardColumnInline(admin.TabularInline):
+class BoardColumnInline(ReadOnlyAdminMixin, admin.TabularInline):
     model = BoardColumn
     extra = 0
     ordering = ("position",)
@@ -36,13 +23,10 @@ class BoardColumnInline(admin.TabularInline):
 
 
 @admin.register(Board)
-class BoardAdmin(admin.ModelAdmin):
+class BoardAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ("project", "created_at")
     search_fields = ("project__name", "project__workspace__name")
     inlines = (BoardColumnInline,)
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 
 @admin.register(Task)

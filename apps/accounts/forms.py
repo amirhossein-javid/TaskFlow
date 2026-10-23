@@ -6,7 +6,18 @@ from django.contrib.auth.forms import UserCreationForm as DjangoUserCreationForm
 from .models import Profile, User
 
 
-class PersianUserCreationForm(DjangoUserCreationForm):
+class EmailIdentityFormMixin:
+    def clean_email(self):
+        email = User.objects.normalize_email(self.cleaned_data["email"])
+        users = User.objects.filter(email__iexact=email)
+        if self.instance.pk:
+            users = users.exclude(pk=self.instance.pk)
+        if users.exists():
+            raise forms.ValidationError("کاربری با این ایمیل وجود دارد.")
+        return email
+
+
+class PersianUserCreationForm(EmailIdentityFormMixin, DjangoUserCreationForm):
     password1 = forms.CharField(
         label="رمز عبور",
         strip=False,
@@ -45,12 +56,6 @@ class RegistrationForm(PersianUserCreationForm):
         model = User
         fields = ("email", "full_name")
 
-    def clean_email(self):
-        email = self.cleaned_data["email"].strip().lower()
-        if User.objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError("کاربری با این ایمیل وجود دارد.")
-        return email
-
     def save(self, commit=True):
         user = super().save(commit=commit)
         if commit:
@@ -80,7 +85,7 @@ class ProfileForm(forms.ModelForm):
         return avatar
 
 
-class UserChangeForm(forms.ModelForm):
+class UserChangeForm(EmailIdentityFormMixin, forms.ModelForm):
     password = ReadOnlyPasswordHashField(
         label="رمز عبور",
         help_text=(

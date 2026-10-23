@@ -27,17 +27,27 @@
 - Views own HTTP handling, form binding, redirects, messages, templates, and JSON contracts.
 - Services own business authorization, validation, transactional writes, and ordering changes.
 - Do not let `ModelFormMixin` or Admin save service-backed domain mutations directly.
+- Workspace, invitation, project, board, and collaboration Admin interfaces, including
+  membership and column inlines, are intentionally read-only.
 - Call the existing service operation from `form_valid()` or the explicit HTTP handler.
 - Keep models responsible for schema constraints and local model validation.
 - Add a service only for real domain behavior; do not build generic action frameworks.
 
 ## Authentication and authorization
 
-- `accounts.User` authenticates by unique email and has a one-to-one `Profile`.
+- `accounts.User` authenticates by canonical, case-insensitive email and has a one-to-one `Profile`.
+  Reuse `UserManager.normalize_email()` across model, registration, and Admin writes; preserve
+  database uniqueness and handle only recognized email constraint conflicts as form errors after rollback.
+- Email data migrations must reject canonical identity collisions atomically; never merge or
+  delete accounts automatically to satisfy uniqueness.
 - Reuse Django authentication, password hashing, CSRF middleware, and safe redirect behavior.
+  Preserve validated invitation destinations through login, registration errors, and account switching;
+  encode nested query strings without weakening host or HTTPS checks.
 - Workspace roles are Owner, Admin, and Member; use existing permission helpers and mixins.
 - Scope nested objects through their parent workspace/project/board in every lookup.
 - Return 404 for missing or cross-scope objects and 403 for an in-scope forbidden action.
+  Workspace update/delete views must also translate `Workspace.DoesNotExist` from service lock
+  acquisition into 404 when the workspace disappears after initial lookup.
 - Preserve dispatch order: authentication, HTTP-method rejection, object lookup, then permission checks.
 - Authenticated unsupported methods must return 405 before scoped-object or role resolution.
 - Read-only pages accept GET/HEAD; mutations use POST and require CSRF protection.
@@ -48,6 +58,14 @@
 - PostgreSQL is required; do not add SQLite fallbacks to application or test settings.
 - Keep multi-row invariants inside `transaction.atomic()` and use `select_for_update()` as established.
 - Workspace owner-safety operations lock the workspace, then all memberships ordered by primary key.
+- Workspace settings and deletion revalidate current ownership inside their service transactions;
+  deletion also rechecks the current confirmation name. Before locking memberships for deletion,
+  lock the workspace's projects by primary key to coordinate with project/board mutations.
+- Invitation acceptance locks the accepting User with `select_for_update(no_key=True)` before
+  the workspace and invitation. Preserve compatibility with deferred User FK `KEY SHARE` checks.
+- Admin user deletion locks Users by primary key and checks each one's current memberships before
+  acquiring the next User lock. Reject deletion of any member, including in bulk actions; retain
+  the locks through deletion so invitation acceptance cannot race the membership check.
 - Board mutations lock project, board, actor membership, then affected child rows.
 - Keep actor membership locks scoped with `select_for_update(of=("self",))` when joining User.
   Review joined lock targets: unintended User locks conflict with recipient FK `KEY SHARE` checks.
@@ -71,7 +89,6 @@
 - Keep event metadata explicit and covered by assertions when event behavior changes.
 - Task deletion preserves activity through the nullable task relation and stored task title.
 - Comment deletion follows task cascade behavior; deleted users remain representable through nullable actors.
-- Task, comment, and activity Admin interfaces are intentionally read-only.
 - Create notifications explicitly in the same service transaction as the task change and source
   `TaskActivity`; require active recipients with current task access, exclude self-notifications,
   and preserve recipient/activity uniqueness.
@@ -87,11 +104,15 @@
 - Preserve accessible labels, keyboard controls, focus states, contrast, and reduced-motion behavior.
 - Keep JavaScript framework-free and treat server-side authorization as authoritative.
 - Include `{% csrf_token %}` in every state-changing form.
+- Canceled or failed Kanban drags restore the last known persisted position. Keep recovery state
+  past `dragend`, prevent overlapping saves, and refresh server ordering after failed requests
+  because a lost response may follow a committed write.
 
 ## Tests and validation
 
 - Place tests beside each app under `apps/<app>/tests/`; add focused regression tests with fixes.
 - Run focused tests while iterating and the full suite for substantial or cross-app changes.
+- For Kanban JavaScript changes, run the Node.js regression tests documented in README's Run tests section.
 - The default pytest configuration enforces at least 85% application coverage.
 - Full PostgreSQL suite:
   `docker compose run --rm web sh -c "pip install -r requirements/development.txt && pytest"`

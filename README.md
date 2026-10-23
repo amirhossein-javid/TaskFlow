@@ -29,6 +29,24 @@ docker compose run --rm web python manage.py createsuperuser
 
 The Django Admin is available at `http://localhost:8000/admin/`.
 
+Workspace, invitation, project, board, and collaboration Admin pages are read-only.
+Use the application workflows for domain changes so authorization, ownership,
+archival rules, and ordering locks remain enforced. Accounts with workspace
+memberships cannot be deleted in Admin, including through bulk deletion; first
+end their memberships through the owner-safe application workflows. Accounts
+without memberships retain normal Admin deletion and Profile cascade behavior.
+
+Workspace settings revalidate the current owner's role inside a transaction.
+Workspace deletion locks the workspace, its projects in primary-key order, then
+memberships in primary-key order before cascading. Project locks precede membership
+locks to coordinate with board mutations. Invitation acceptance first locks the
+accepting User with `NO KEY UPDATE`, then the workspace and invitation. This
+serializes account deletion before workspace locks while allowing other writes'
+deferred User foreign-key checks to commit. If account deletion commits first,
+acceptance rejects the invitation; if acceptance commits first, Admin refuses to
+delete the now-member account. The workspace-before-invitation order also
+coordinates acceptance with workspace deletion.
+
 ## Authentication and profiles
 
 The accounts application provides:
@@ -39,6 +57,20 @@ The accounts application provides:
 - Protected account pages and authentication-aware navigation
 
 The main account routes are under `/accounts/`. Development password-reset emails are written to the console by default.
+
+Email identity is case-insensitive. Model saves, registration, and Admin normalize
+emails by trimming surrounding whitespace and lowercasing; PostgreSQL also enforces
+uniqueness on the normalized value. Login accepts email case differences. Concurrent
+registration or Admin email conflicts return a Persian validation error.
+
+Migration `accounts.0006_user_email_identity` normalizes existing emails while
+preserving user IDs and relationships. It locks the user table for the duration of
+the migration. If existing accounts collide after normalization, it aborts atomically
+and reports their user IDs without merging or deleting accounts. Before upgrading,
+back up the database and schedule a maintenance window; resolve reported identities
+explicitly after verifying account ownership, then rerun `migrate`. Do not delete or
+merge accounts automatically. Reversing the migration removes the added constraint
+but does not restore the original email casing or whitespace.
 
 Standard individual user-creation paths (registration, Admin, `create_user()`,
 `create_superuser()`, `createsuperuser`, and normal model saves) create exactly one
@@ -81,6 +113,18 @@ python manage.py runserver
 pytest
 ```
 
+Kanban drag cancellation and failed-save regression tests use Node.js 18+ and its
+built-in test runner, without extra npm dependencies:
+
+```powershell
+node --test apps/boards/tests/kanban.test.cjs
+```
+
+These event-handler tests cover same-column and cross-column cancellation,
+rejected/network/non-JSON responses after `dragend`, and overlapping-save prevention.
+Failed saves restore the last known persisted position immediately, then refresh
+the board because a lost response may follow a committed server write.
+
 ## Code quality
 
 Run Ruff after installing the development dependencies:
@@ -121,6 +165,10 @@ Set `DJANGO_EMAIL_BACKEND` only when a different Django email backend is require
 Authenticated users can create multiple workspaces under `/workspaces/`. Workspace access is controlled by Owner, Admin, and Member roles. Owners manage roles and workspace settings, while Owners and Admins can invite and remove eligible members.
 
 Invitation links are single-use, expire after seven days by default, and can only be accepted by a signed-in account with the invited email address. Set `WORKSPACE_INVITATION_EXPIRY_DAYS` to change the lifetime. Email delivery reuses the `DJANGO_EMAIL_*` configuration described above; development writes invitations to the console.
+
+Invitation destinations survive navigation between login and registration,
+registration validation errors, and switching away from an incorrect account.
+Redirect targets continue to use Django's host and HTTPS safety checks.
 
 Apply the workspace schema migration after updating:
 

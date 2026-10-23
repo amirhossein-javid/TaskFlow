@@ -27,11 +27,11 @@
         </div>
         <form method="post" novalidate>
             {% csrf_token %}
-            {% if request.GET.next %}<input type="hidden" name="next" value="{{ request.GET.next }}">{% endif %}
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
             {% include "accounts/_form.html" %}
             <button class="button button-block button-large" type="submit">ساخت حساب <span aria-hidden="true">←</span></button>
         </form>
-        <p class="auth-footer">حساب دارید؟ <a href="{% url 'accounts:login' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">وارد حساب شوید</a></p>
+        <p class="auth-footer">حساب دارید؟ <a href="{% url 'accounts:login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">وارد حساب شوید</a></p>
     </section>
 </div>
 {% endblock %}
