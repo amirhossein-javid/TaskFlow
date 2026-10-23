@@ -1,5 +1,10 @@
+import math
 import os
+from email.utils import parseaddr
 from pathlib import Path
+
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -11,8 +16,11 @@ def env(name: str, default: str | None = None) -> str:
     return value
 
 
-def env_bool(name: str, default: bool = False) -> bool:
-    return env(name, str(default)).lower() in {"1", "true", "yes", "on"}
+def env_bool(name: str, default: bool = False, *, strict: bool = False) -> bool:
+    value = env(name, str(default)).lower()
+    if strict and value not in {"1", "true", "yes", "on", "0", "false", "no", "off"}:
+        raise RuntimeError(f"{name} must be a boolean.")
+    return value in {"1", "true", "yes", "on"}
 
 
 def env_list(name: str, default: str = "") -> list[str]:
@@ -103,9 +111,26 @@ EMAIL_HOST = env("DJANGO_EMAIL_HOST", "localhost")
 EMAIL_PORT = int(env("DJANGO_EMAIL_PORT", "587"))
 EMAIL_HOST_USER = env("DJANGO_EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = env_bool("DJANGO_EMAIL_USE_TLS", True)
-EMAIL_USE_SSL = env_bool("DJANGO_EMAIL_USE_SSL", False)
+EMAIL_USE_TLS = env_bool("DJANGO_EMAIL_USE_TLS", True, strict=True)
+EMAIL_USE_SSL = env_bool("DJANGO_EMAIL_USE_SSL", False, strict=True)
+EMAIL_TIMEOUT = float(env("DJANGO_EMAIL_TIMEOUT", "5"))
 DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", "TaskFlow <noreply@example.com>")
+if not math.isfinite(EMAIL_TIMEOUT) or not 0 < EMAIL_TIMEOUT <= 10:
+    raise RuntimeError("DJANGO_EMAIL_TIMEOUT must be greater than zero and at most 10 seconds.")
+if EMAIL_USE_TLS and EMAIL_USE_SSL:
+    raise RuntimeError("SMTP TLS and SSL are mutually exclusive.")
+if not 1 <= EMAIL_PORT <= 65535:
+    raise RuntimeError("DJANGO_EMAIL_PORT must be between 1 and 65535.")
+if not EMAIL_HOST or any(character.isspace() for character in EMAIL_HOST) or "://" in EMAIL_HOST:
+    raise RuntimeError("DJANGO_EMAIL_HOST must be an SMTP hostname.")
+if bool(EMAIL_HOST_USER) != bool(EMAIL_HOST_PASSWORD):
+    raise RuntimeError("SMTP username and password must be provided together.")
+try:
+    validate_email(parseaddr(DEFAULT_FROM_EMAIL)[1])
+except ValidationError:
+    raise RuntimeError("DJANGO_DEFAULT_FROM_EMAIL must be a valid sender address.") from None
+if "\r" in DEFAULT_FROM_EMAIL or "\n" in DEFAULT_FROM_EMAIL:
+    raise RuntimeError("DJANGO_DEFAULT_FROM_EMAIL must be a valid sender address.")
 
 LANGUAGE_CODE = "fa-ir"
 TIME_ZONE = env("DJANGO_TIME_ZONE", "Asia/Tehran")

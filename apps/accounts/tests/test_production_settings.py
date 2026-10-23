@@ -80,6 +80,23 @@ def test_production_requires_https_and_uses_conservative_security_defaults():
         {"POSTGRES_HOST": ""},
         {"POSTGRES_PASSWORD": "taskflow"},
         {"DJANGO_SECURE_HSTS_SECONDS": "-1"},
+        {"DJANGO_EMAIL_TIMEOUT": "0"},
+        {"DJANGO_EMAIL_TIMEOUT": "-1"},
+        {"DJANGO_EMAIL_TIMEOUT": "11"},
+        {"DJANGO_EMAIL_TIMEOUT": "nan"},
+        {"DJANGO_EMAIL_TIMEOUT": "inf"},
+        {"DJANGO_EMAIL_PORT": "0"},
+        {"DJANGO_EMAIL_PORT": "65536"},
+        {"DJANGO_EMAIL_HOST": ""},
+        {"DJANGO_EMAIL_HOST": "smtp.example.com\n"},
+        {"DJANGO_EMAIL_HOST": "https://smtp.example.com"},
+        {"DJANGO_EMAIL_USE_TLS": "typo"},
+        {"DJANGO_EMAIL_USE_SSL": "true"},
+        {"DJANGO_EMAIL_USE_TLS": "false", "DJANGO_EMAIL_USE_SSL": "false"},
+        {"DJANGO_EMAIL_HOST_USER": "user-only"},
+        {"DJANGO_EMAIL_HOST_PASSWORD": "password-only"},
+        {"DJANGO_DEFAULT_FROM_EMAIL": "invalid"},
+        {"DJANGO_DEFAULT_FROM_EMAIL": "TaskFlow <sender@example.com>\nBcc: other@example.com"},
     ],
 )
 def test_production_rejects_unsafe_configuration(overrides):
@@ -103,5 +120,20 @@ def test_file_secrets_are_supported_and_ambiguous_sources_are_rejected(tmp_path)
     result = production_settings(
         POSTGRES_PASSWORD="",
         POSTGRES_PASSWORD_FILE=str(secret),
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("tls,ssl,port", [("true", "false", "587"), ("false", "true", "465")])
+def test_production_accepts_explicit_encrypted_smtp_configuration(tls, ssl, port):
+    result = production_settings(
+        DJANGO_EMAIL_USE_TLS=tls,
+        DJANGO_EMAIL_USE_SSL=ssl,
+        DJANGO_EMAIL_PORT=port,
+        DJANGO_EMAIL_TIMEOUT="3",
+        DJANGO_EMAIL_HOST="smtp.example.com",
+        DJANGO_EMAIL_HOST_USER="sender@example.com",
+        DJANGO_EMAIL_HOST_PASSWORD="private-test-password",
+        DJANGO_DEFAULT_FROM_EMAIL="TaskFlow <sender@example.com>",
     )
     assert result.returncode == 0, result.stderr
