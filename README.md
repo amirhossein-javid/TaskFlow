@@ -163,6 +163,23 @@ edge and outbound networks provide Nginx ingress and Django email egress.
 Do not attach untrusted containers, publish Gunicorn, or place another proxy/CDN
 in front without reviewing the trust and client-IP/rate-limit configuration.
 
+Configure Compose through `.env.production` (see `.env.production.example`):
+
+| Variable | Purpose / default |
+| --- | --- |
+| `TASKFLOW_HOST` | Public hostname or IPv4 address; `localhost` for local checks |
+| `TASKFLOW_BIND_ADDRESS` | Host interface for Nginx ports; `127.0.0.1` |
+| `TASKFLOW_HTTP_PORT` / `TASKFLOW_HTTPS_PORT` | Published ports; `8080` / `8443` |
+| `TASKFLOW_IMAGE` | Application image; use a unique release tag for updates |
+| `TASKFLOW_SECRET_DIRECTORY` | Directory containing the three generated secret files; `./.runtime/secrets` |
+| `TASKFLOW_TLS_DIRECTORY` | Directory containing `fullchain.pem` and `privkey.pem`; `./.runtime/tls` |
+
+Compose derives Django's allowed host and trusted CSRF origin from the host/HTTPS
+port, and fixes the internal database settings. Only variables explicitly forwarded
+in `compose.production.yaml` reach Django; adding another setting to the env file
+alone does not configure the container. SMTP variables are listed below; protect
+the env file if it contains SMTP credentials.
+
 Initial local verification needs Docker Compose, Python 3.12+, and OpenSSL, but no
 server purchase, domain or public certificate. Run from the repository root:
 
@@ -245,10 +262,16 @@ The sample console email backend is only for local verification. Production-like
 settings simulate it without printing contents/tokens; development still prints
 messages. Configure real delivery before public use.
 
-Health checks, consistent PostgreSQL/media backup and isolated restoration tools,
-release steps and rollback limitations are documented in
-[the production operations guide](deploy/OPERATIONS.md). No scheduler or monitoring
-stack is required. Backups and off-host copying remain explicit operator actions.
+`GET`/`HEAD /health/live/` checks liveness without database access;
+`/health/ready/` checks PostgreSQL within a five-second deadline and returns generic
+503 on failure. Docker checks readiness, but an unhealthy status alone does not
+restart the container or prove that migrations are complete.
+
+Use [the production operations guide](deploy/OPERATIONS.md) for health/log commands,
+`deploy/backup.py` backup, verify and fresh-target restore procedures, disposable
+restoration checks, and release/rollback steps. A checksum check is not a restoration
+test, and image rollback does not reverse database or media changes. Backups and
+off-host copying remain explicit operator actions.
 
 The repeatable runtime check creates an account, recreates containers, and tests
 TLS verification, proxy spoofing, CSRF/cookies, manifest assets, avatar persistence,

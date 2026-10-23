@@ -24,10 +24,14 @@
 
 - Keep `compose.production.yaml` independent of development Compose. Only Nginx may publish
   ports; preserve private proxy/database networks and the restricted `taskflow_app` role.
+- Preserve fail-fast production settings validation, HTTPS-only cookies and encrypted SMTP
+  with finite positive socket timeouts. Socket timeouts do not bound DNS or total delivery time.
 - Nginx replaces forwarding headers and validates the public Host. Django's proxy SSL header
   is safe only behind that boundary; do not trust client headers for IP-based rate limits.
 - Collect manifest static assets at image build time without production secrets or a database.
   Keep runtime secrets/TLS material outside Git and the build context, and media in its volume.
+- Never regenerate passwords for an existing database volume as a rotation mechanism;
+  coordinate file secrets with database role passwords explicitly.
 - Apply avatar decoding, pixel/size limits and pixel-only re-encoding in both profile and Admin
   forms. Preserve existing/cleared uploads and never serve arbitrary media as active documents.
 - Production migrations are explicit one-off operations under the application role, not startup
@@ -40,6 +44,8 @@
   URL/query values or email contents to output. Preserve request correlation across Nginx/Django.
 - Database/media backups require stopped writers. Restore only into empty isolated targets;
   never overwrite live data or claim verification without an actual restoration and data checks.
+  Validate bundle checksums and archive paths/types before database mutation; checksums do not
+  establish authenticity. Restore schema and migration history before running migration checks.
   Follow deploy/OPERATIONS.md for explicit release, migration, backup and rollback procedures.
 
 ## CBVs and service layer
