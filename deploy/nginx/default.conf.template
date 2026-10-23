@@ -7,6 +7,7 @@ map "$request_method:$uri" $email_key {
     default "";
     ~^POST:/accounts/(register|password/reset)/$ $binary_remote_addr;
     ~^POST:/workspaces/[^/]+/members/invite/$ $binary_remote_addr;
+    ~^POST:/workspaces/[^/]+/invitations/[0-9]+/resend/$ $binary_remote_addr;
 }
 map $uri $token_key {
     default "";

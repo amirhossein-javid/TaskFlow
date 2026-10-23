@@ -241,8 +241,8 @@ bind Nginx explicitly to the intended host interface, set HTTP/HTTPS ports to
 80/443, and supply a valid certificate chain/key in the configured TLS directory.
 Arrange certificate renewal and reload Nginx after replacing certificates.
 The sample console email backend is only for local verification and prints email
-contents/tokens; configure real delivery before public use. SMTP workflow changes,
-backup automation and monitoring are outside this runtime increment.
+contents/tokens; configure real delivery before public use. Backup automation and
+monitoring remain separate work.
 
 The repeatable runtime check creates an account, recreates containers, and tests
 TLS verification, proxy spoofing, CSRF/cookies, manifest assets, avatar persistence,
@@ -265,6 +265,7 @@ Production email delivery uses Django's SMTP backend by default. Configure these
 
 - `DJANGO_EMAIL_HOST`
 - `DJANGO_EMAIL_PORT`
+- `DJANGO_EMAIL_TIMEOUT` (default 5 seconds; greater than zero and at most 10)
 - `DJANGO_EMAIL_HOST_USER`
 - `DJANGO_EMAIL_HOST_PASSWORD`
 - `DJANGO_EMAIL_USE_TLS`
@@ -272,12 +273,44 @@ Production email delivery uses Django's SMTP backend by default. Configure these
 - `DJANGO_DEFAULT_FROM_EMAIL`
 
 Set `DJANGO_EMAIL_BACKEND` only when a different Django email backend is required.
+TLS and implicit SSL are mutually exclusive; production SMTP requires one of them.
+SMTP host, port, sender and credential pairs are validated at startup. A timeout
+must be finite and positive; invalid boolean values fail instead of silently
+disabling encryption. `EMAIL_TIMEOUT` bounds individual socket operations, not the
+entire request or DNS lookup. Delivery remains synchronous without a worker queue.
+The provider accepting a message does not guarantee inbox delivery.
+
+Password reset retains Django's active-account/password checks, token generation,
+single-use behavior and generic redirect for existing, unknown, inactive and
+unusable-password accounts, including SMTP failures. The completion page makes no
+delivery guarantee and never exposes backend errors or account existence. As with
+Django's synchronous reset flow, SMTP latency can still produce timing differences.
 
 ## Workspaces and invitations
 
 Authenticated users can create multiple workspaces under `/workspaces/`. Workspace access is controlled by Owner, Admin, and Member roles. Owners manage roles and workspace settings, while Owners and Admins can invite and remove eligible members.
 
 Invitation links are single-use, expire after seven days by default, and can only be accepted by a signed-in account with the invited email address. Set `WORKSPACE_INVITATION_EXPIRY_DAYS` to change the lifetime. Email delivery reuses the `DJANGO_EMAIL_*` configuration described above; development writes invitations to the console.
+
+Invitation creation commits before SMTP starts, releasing workspace and membership
+locks. These views explicitly opt out of request-wide transactions. A zero send
+count, rejected message, connection failure or timeout shows an unconfirmed-delivery
+message; it never rolls back the committed invitation or claims success. SMTP may
+have accepted DATA before its reply was lost, so the link remains usable. A process
+interruption between commit and sending can likewise leave a pending invitation.
+There is no automatic retry, durable email queue or exactly-once delivery claim.
+
+Owners can resend pending Member/Admin invitations from the members page; Admins
+can resend only Member invitations. The POST-only, CSRF-protected action rechecks
+current permissions and pending status under workspace/actor/invitation locks.
+Each resend invalidates the old link by rotating its hash; raw tokens are never
+stored. Role, recipient, original inviter and expiry remain unchanged. Accepted,
+revoked, expired invitations and invitations to current members cannot be resent.
+After failure, use this action again; it generates another new link and never
+restores a previous token. Concurrent resends can produce multiple emails, but only
+the latest committed token is valid. Production Nginx applies the same email rate
+limit to creation and resend. Invitation failure logs contain only the invitation
+ID, without raw SMTP errors, email addresses or links.
 
 Invitation destinations survive navigation between login and registration,
 registration validation errors, and switching away from an incorrect account.

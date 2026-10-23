@@ -1,17 +1,16 @@
-import logging
-
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.core.mail import send_mail
 from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.generic import FormView, ListView, TemplateView, UpdateView
 
+from .emails import INVITATION_DELIVERY_WARNING, send_invitation_email
 from .forms import InvitationForm, MembershipRoleForm, WorkspaceDeleteForm, WorkspaceForm
 from .mixins import (
     WorkspaceAccessMixin,
@@ -28,14 +27,9 @@ from .services import (
     delete_workspace,
     leave_workspace,
     remove_membership,
+    resend_invitation,
     update_workspace,
 )
-
-logger = logging.getLogger(__name__)
-
-
-class InvitationDeliveryError(Exception):
-    """Raised when an invitation email backend does not confirm delivery."""
 
 
 class WorkspaceListView(LoginRequiredMixin, ListView):
@@ -107,6 +101,7 @@ class WorkspaceSettingsView(WorkspaceOwnerRequiredMixin, UpdateView):
         return redirect("workspaces:settings", slug=self.object.slug)
 
 
+@method_decorator(transaction.non_atomic_requests, name="dispatch")
 class InviteMemberView(WorkspaceManagerRequiredMixin, FormView):
     form_class = InvitationForm
     template_name = "workspaces/invitation_form.html"
@@ -119,47 +114,59 @@ class InviteMemberView(WorkspaceManagerRequiredMixin, FormView):
 
     def form_valid(self, form):
         try:
-            with transaction.atomic():
-                invitation, token = create_invitation(
-                    workspace=self.workspace,
-                    actor=self.membership,
-                    **form.cleaned_data,
-                )
-                accept_url = self.request.build_absolute_uri(
-                    reverse("workspaces:invitation", kwargs={"token": token})
-                )
-                try:
-                    delivered = send_mail(
-                        subject=f"دعوت به فضای کاری {self.workspace.name}",
-                        message=(
-                            f"شما برای پیوستن به فضای کاری «{self.workspace.name}» دعوت "
-                            "شده‌اید.\n\n"
-                            "برای مشاهده و پذیرش دعوت از این پیوند استفاده کنید:\n"
-                            f"{accept_url}\n\n"
-                            "این پیوند محدود، یک‌بارمصرف و مخصوص همین ایمیل است."
-                        ),
-                        from_email=None,
-                        recipient_list=[invitation.email],
-                        fail_silently=False,
-                    )
-                except Exception as error:
-                    raise InvitationDeliveryError from error
-                if delivered != 1:
-                    raise InvitationDeliveryError
+            invitation, token = create_invitation(
+                workspace=self.workspace,
+                actor=self.membership,
+                **form.cleaned_data,
+            )
+        except Workspace.DoesNotExist as error:
+            raise Http404 from error
         except ValidationError as error:
             form.add_error("email", error)
             return self.form_invalid(form)
-        except InvitationDeliveryError:
-            logger.exception(
-                "Workspace invitation email delivery failed",
-                extra={"workspace_id": self.workspace.pk},
-            )
-            form.add_error(
-                None,
-                "ارسال دعوت‌نامه انجام نشد. لطفاً کمی بعد دوباره تلاش کنید.",
-            )
+        if not send_invitation_email(
+            invitation=invitation,
+            workspace_name=self.workspace.name,
+            accept_url=self.request.build_absolute_uri(
+                reverse("workspaces:invitation", kwargs={"token": token})
+            ),
+        ):
+            form.add_error(None, INVITATION_DELIVERY_WARNING)
             return self.form_invalid(form)
         messages.success(self.request, "دعوت‌نامه با موفقیت ارسال شد.")
+        return redirect("workspaces:members", slug=self.workspace.slug)
+
+
+@method_decorator(transaction.non_atomic_requests, name="dispatch")
+class ResendInvitationView(WorkspaceManagerRequiredMixin, View):
+    http_method_names = ["post"]
+
+    def post(self, request, *args, **kwargs):
+        try:
+            invitation, token = resend_invitation(
+                workspace=self.workspace,
+                actor=self.membership,
+                invitation_id=kwargs["invitation_id"],
+            )
+        except (Workspace.DoesNotExist, WorkspaceInvitation.DoesNotExist) as error:
+            raise Http404 from error
+        except ValidationError as error:
+            messages.error(request, error.messages[0])
+        else:
+            if send_invitation_email(
+                invitation=invitation,
+                workspace_name=self.workspace.name,
+                accept_url=request.build_absolute_uri(
+                    reverse("workspaces:invitation", kwargs={"token": token})
+                ),
+            ):
+                messages.success(
+                    request, "دعوت‌نامه با پیوند جدید ارسال شد؛ پیوند قبلی دیگر معتبر نیست."
+                )
+            else:
+                messages.error(
+                    request, f"{INVITATION_DELIVERY_WARNING} پیوند قبلی دیگر معتبر نیست."
+                )
         return redirect("workspaces:members", slug=self.workspace.slug)
 
 

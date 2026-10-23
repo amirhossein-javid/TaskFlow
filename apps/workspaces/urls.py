@@ -6,6 +6,7 @@ from .views import (
     InviteMemberView,
     MemberListView,
     RemoveMemberView,
+    ResendInvitationView,
     WorkspaceCreateView,
     WorkspaceDeleteView,
     WorkspaceDetailView,
@@ -23,6 +24,11 @@ urlpatterns = [
     path("<slug:slug>/", WorkspaceDetailView.as_view(), name="detail"),
     path("<slug:slug>/members/", MemberListView.as_view(), name="members"),
     path("<slug:slug>/members/invite/", InviteMemberView.as_view(), name="invite"),
+    path(
+        "<slug:slug>/invitations/<int:invitation_id>/resend/",
+        ResendInvitationView.as_view(),
+        name="resend_invitation",
+    ),
     path(
         "<slug:slug>/members/<int:membership_id>/role/",
         ChangeRoleView.as_view(),

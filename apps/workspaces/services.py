@@ -138,8 +138,15 @@ def create_invitation(
     *, workspace: Workspace, actor: WorkspaceMembership, email: str, role: str
 ) -> tuple[WorkspaceInvitation, str]:
     Workspace.objects.select_for_update().get(pk=workspace.pk)
-    actor = WorkspaceMembership.objects.select_for_update().get(pk=actor.pk, workspace=workspace)
-    if actor.role not in [WorkspaceMembership.Role.OWNER, WorkspaceMembership.Role.ADMIN]:
+    actor = (
+        WorkspaceMembership.objects.select_for_update()
+        .filter(pk=actor.pk, workspace=workspace)
+        .first()
+    )
+    if actor is None or actor.role not in [
+        WorkspaceMembership.Role.OWNER,
+        WorkspaceMembership.Role.ADMIN,
+    ]:
         raise PermissionDenied
     allowed_roles = [WorkspaceMembership.Role.MEMBER]
     if actor.role == WorkspaceMembership.Role.OWNER:
@@ -172,6 +179,42 @@ def create_invitation(
         invited_by=actor.user,
         expires_at=now + timedelta(days=settings.WORKSPACE_INVITATION_EXPIRY_DAYS),
     )
+    return invitation, token
+
+
+@transaction.atomic
+def resend_invitation(
+    *, workspace: Workspace, actor: WorkspaceMembership, invitation_id: int
+) -> tuple[WorkspaceInvitation, str]:
+    Workspace.objects.select_for_update().get(pk=workspace.pk)
+    actor = (
+        WorkspaceMembership.objects.select_for_update()
+        .filter(pk=actor.pk, workspace=workspace)
+        .first()
+    )
+    if actor is None or actor.role not in [
+        WorkspaceMembership.Role.OWNER,
+        WorkspaceMembership.Role.ADMIN,
+    ]:
+        raise PermissionDenied
+    invitation = WorkspaceInvitation.objects.select_for_update().get(
+        pk=invitation_id,
+        workspace=workspace,
+    )
+    if (
+        actor.role == WorkspaceMembership.Role.ADMIN
+        and invitation.role != WorkspaceMembership.Role.MEMBER
+    ):
+        raise PermissionDenied
+    if not invitation.is_pending:
+        raise ValidationError("فقط دعوت فعال و در انتظار را می‌توان دوباره ارسال کرد.")
+    if WorkspaceMembership.objects.filter(
+        workspace=workspace, user__email__iexact=invitation.email
+    ).exists():
+        raise ValidationError("این کاربر از قبل عضو فضای کاری است.")
+    token = secrets.token_urlsafe(32)
+    invitation.token_hash = WorkspaceInvitation.digest_token(token)
+    invitation.save(update_fields=["token_hash"])
     return invitation, token
 
 

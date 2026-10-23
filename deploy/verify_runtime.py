@@ -252,6 +252,7 @@ def main():
         ("/accounts/register/", 6),
         ("/accounts/password/reset/", 6),
         ("/workspaces/example/members/invite/", 6),
+        ("/workspaces/example/invitations/1/resend/", 6),
         ("/workspaces/invitations/invalid/", 15),
         ("/accounts/password/reset/invalid/invalid/", 15),
     ]:

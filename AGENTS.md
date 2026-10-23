@@ -78,6 +78,12 @@
   lock the workspace's projects by primary key to coordinate with project/board mutations.
 - Invitation acceptance locks the accepting User with `select_for_update(no_key=True)` before
   the workspace and invitation. Preserve compatibility with deferred User FK `KEY SHARE` checks.
+- Invitation creation/resend commits before synchronous email delivery; keep these HTTP views
+  outside request-wide transactions. SMTP must never hold workspace/membership/invitation locks.
+  Retain committed invitations after unconfirmed delivery and never automatically retry SMTP.
+- Resends lock workspace, current actor membership, then the scoped invitation; revalidate role,
+  pending status and current membership. Rotate only the token hash, preserve expiry, and never
+  restore an old hash after failure or log raw tokens/SMTP exception contents.
 - Admin user deletion locks Users by primary key and checks each one's current memberships before
   acquiring the next User lock. Reject deletion of any member, including in bulk actions; retain
   the locks through deletion so invitation acceptance cannot race the membership check.
