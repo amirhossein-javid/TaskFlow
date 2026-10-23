@@ -34,6 +34,13 @@
   side effects. Initialization scripts only provision empty PostgreSQL volumes.
 - For runtime/proxy changes, run README's disposable HTTPS runtime check in addition to focused
   settings/security tests. Never use its account creation/container recreation against live data.
+- Liveness must not query the database; readiness must retain a wall-clock deadline including DNS.
+  Keep probe credentials off argv/logs and health responses free of internal details.
+- Production logging is allowlisted: do not add raw messages, exception values, SQL, headers,
+  URL/query values or email contents to output. Preserve request correlation across Nginx/Django.
+- Database/media backups require stopped writers. Restore only into empty isolated targets;
+  never overwrite live data or claim verification without an actual restoration and data checks.
+  Follow deploy/OPERATIONS.md for explicit release, migration, backup and rollback procedures.
 
 ## CBVs and service layer
 

@@ -233,16 +233,22 @@ reset requests and invitation sending share 3/minute with burst 2. Invitation an
 reset-token paths share 30/minute with burst 10. Limits are per client IP, including
 users behind the same NAT; tune the explicit zones if normal traffic requires it.
 Excess requests receive a static Persian 429 page, `Retry-After: 60`, and no-store.
-Ordinary browsing is not limited. Access logs omit URLs, query strings and cookies;
-full application logging and operational hardening remain separate work.
+Ordinary browsing is not limited. Production request/error logs use safe JSON
+fields and omit URLs, query strings, cookies, headers and exception contents;
+Docker log rotation bounds local storage. See the operations guide below.
 
 For an eventual public host, set `TASKFLOW_HOST` to its DNS name or IPv4 address,
 bind Nginx explicitly to the intended host interface, set HTTP/HTTPS ports to
 80/443, and supply a valid certificate chain/key in the configured TLS directory.
 Arrange certificate renewal and reload Nginx after replacing certificates.
-The sample console email backend is only for local verification and prints email
-contents/tokens; configure real delivery before public use. Backup automation and
-monitoring remain separate work.
+The sample console email backend is only for local verification. Production-like
+settings simulate it without printing contents/tokens; development still prints
+messages. Configure real delivery before public use.
+
+Health checks, consistent PostgreSQL/media backup and isolated restoration tools,
+release steps and rollback limitations are documented in
+[the production operations guide](deploy/OPERATIONS.md). No scheduler or monitoring
+stack is required. Backups and off-host copying remain explicit operator actions.
 
 The repeatable runtime check creates an account, recreates containers, and tests
 TLS verification, proxy spoofing, CSRF/cookies, manifest assets, avatar persistence,
