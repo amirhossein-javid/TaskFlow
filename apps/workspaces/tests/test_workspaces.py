@@ -347,13 +347,13 @@ def test_invite_view_sends_email_with_acceptance_url(client, settings):
     assert "/workspaces/invitations/" in mail.outbox[0].body
 
 
-def test_invite_email_failure_rolls_back_invitation_and_shows_safe_error(client):
+def test_invite_email_failure_preserves_invitation_and_shows_safe_error(client):
     owner = make_user("owner@example.com")
     workspace, _ = make_workspace(owner)
     client.force_login(owner)
 
     with patch(
-        "apps.workspaces.views.send_mail",
+        "apps.workspaces.emails.send_mail",
         side_effect=OSError("private SMTP connection details"),
     ):
         response = client.post(
@@ -363,27 +363,25 @@ def test_invite_email_failure_rolls_back_invitation_and_shows_safe_error(client)
 
     content = response.content.decode()
     assert response.status_code == 200
-    assert not WorkspaceInvitation.objects.filter(
-        workspace=workspace, email="new@example.com"
-    ).exists()
-    assert "ارسال دعوت‌نامه انجام نشد" in content
+    assert WorkspaceInvitation.objects.filter(workspace=workspace, email="new@example.com").exists()
+    assert "ارسال دعوت‌نامه تأیید نشد" in content
     assert "دعوت‌نامه با موفقیت ارسال شد" not in content
     assert "private SMTP connection details" not in content
 
 
-def test_invite_zero_delivery_rolls_back_invitation(client):
+def test_invite_zero_delivery_preserves_invitation(client):
     owner = make_user("owner@example.com")
     workspace, _ = make_workspace(owner)
     client.force_login(owner)
 
-    with patch("apps.workspaces.views.send_mail", return_value=0):
+    with patch("apps.workspaces.emails.send_mail", return_value=0):
         response = client.post(
             reverse("workspaces:invite", args=[workspace.slug]),
             {"email": "new@example.com", "role": WorkspaceMembership.Role.MEMBER},
         )
 
     assert response.status_code == 200
-    assert not WorkspaceInvitation.objects.filter(workspace=workspace).exists()
+    assert WorkspaceInvitation.objects.filter(workspace=workspace).exists()
 
 
 def test_member_cannot_open_invitation_form(client):

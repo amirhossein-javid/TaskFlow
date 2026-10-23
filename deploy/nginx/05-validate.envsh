@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+# Sourced by the official entrypoint; reject template injection before envsubst.
+case "$TASKFLOW_HOST" in
+    ''|*[!a-zA-Z0-9.-]*) echo 'Invalid TASKFLOW_HOST' >&2; exit 1 ;;
+esac
+case "$TASKFLOW_HTTPS_PORT" in
+    ''|*[!0-9]*) echo 'Invalid TASKFLOW_HTTPS_PORT' >&2; exit 1 ;;
+esac
+[ "$TASKFLOW_HTTPS_PORT" -ge 1 ] && [ "$TASKFLOW_HTTPS_PORT" -le 65535 ]

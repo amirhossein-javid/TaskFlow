@@ -146,12 +146,155 @@ pre-commit run --all-files
 - Development: `config.settings.development`
 - Production: `config.settings.production`
 
-Production requires at least `DJANGO_SECRET_KEY` and `DJANGO_ALLOWED_HOSTS`. Never commit `.env` files. Configure TLS, `CSRF_TRUSTED_ORIGINS`, and allowed hosts for the target environment before deployment.
+Production requires strong Django and database secrets, an explicit database name,
+host and application role, and explicit allowed hosts. Use exactly one of
+`DJANGO_SECRET_KEY` / `DJANGO_SECRET_KEY_FILE` and `POSTGRES_PASSWORD` /
+`POSTGRES_PASSWORD_FILE`. Empty, short and obviously weak secrets, wildcard hosts,
+unsafe CSRF origins, debug mode and disabled HTTPS redirects fail at startup.
+Never commit secrets or `.env` files.
+
+### Production runtime on one host
+
+`compose.production.yaml` is independent of the development Compose file. It runs
+Nginx, non-root Gunicorn/Django, and PostgreSQL. Only Nginx publishes ports; its
+default bindings are loopback HTTP 8080 and HTTPS 8443. Django and PostgreSQL have
+no host ports. The private proxy and database networks are internal; separate
+edge and outbound networks provide Nginx ingress and Django email egress.
+Do not attach untrusted containers, publish Gunicorn, or place another proxy/CDN
+in front without reviewing the trust and client-IP/rate-limit configuration.
+
+Configure Compose through `.env.production` (see `.env.production.example`):
+
+| Variable | Purpose / default |
+| --- | --- |
+| `TASKFLOW_HOST` | Public hostname or IPv4 address; `localhost` for local checks |
+| `TASKFLOW_BIND_ADDRESS` | Host interface for Nginx ports; `127.0.0.1` |
+| `TASKFLOW_HTTP_PORT` / `TASKFLOW_HTTPS_PORT` | Published ports; `8080` / `8443` |
+| `TASKFLOW_IMAGE` | Application image; use a unique release tag for updates |
+| `TASKFLOW_SECRET_DIRECTORY` | Directory containing the three generated secret files; `./.runtime/secrets` |
+| `TASKFLOW_TLS_DIRECTORY` | Directory containing `fullchain.pem` and `privkey.pem`; `./.runtime/tls` |
+
+Compose derives Django's allowed host and trusted CSRF origin from the host/HTTPS
+port, and fixes the internal database settings. Only variables explicitly forwarded
+in `compose.production.yaml` reach Django; adding another setting to the env file
+alone does not configure the container. SMTP variables are listed below; protect
+the env file if it contains SMTP credentials.
+
+Initial local verification needs Docker Compose, Python 3.12+, and OpenSSL, but no
+server purchase, domain or public certificate. Run from the repository root:
+
+```sh
+cp .env.production.example .env.production
+python3 deploy/prepare_secrets.py
+mkdir -p .runtime/tls
+chmod 700 .runtime/tls
+openssl req -x509 -newkey rsa:2048 -nodes -days 7 \
+  -keyout .runtime/tls/privkey.pem -out .runtime/tls/fullchain.pem \
+  -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost'
+chmod 600 .runtime/tls/privkey.pem
+docker compose --env-file .env.production -f compose.production.yaml build web
+docker compose --env-file .env.production -f compose.production.yaml run --rm web python manage.py check --deploy
+docker compose --env-file .env.production -f compose.production.yaml run --rm web python manage.py migrate --noinput
+docker compose --env-file .env.production -f compose.production.yaml up -d
+```
+
+Open `https://localhost:8443`. The self-signed certificate is for local tests;
+trust it explicitly in a test client rather than disabling production HTTPS.
+For PowerShell, use `Copy-Item` and `New-Item -ItemType Directory` for the first
+file/directory commands; protect runtime directories with Windows ACLs instead
+of `chmod`. Change the port values in `.env.production` if they are occupied.
+
+The secret generator never overwrites existing credentials. Compose file secrets
+are read-only bind mounts, not an encrypted secret store; uid/gid/mode remapping
+is not supported for these files. Secret files are readable by the non-root
+container, with a host directory of mode 0700 (or equivalent private Windows ACLs).
+Keep `.runtime` private; it is excluded from Git and the Docker build context.
+Do not regenerate passwords for an existing database volume: changing a file does
+not change the database role password. Coordinate credential rotation explicitly.
+
+Fresh database initialization creates `taskflow_app`, which owns the `taskflow`
+database and public schema so it can run migrations. It has no superuser,
+createdb, createrole, replication or bypass-RLS privileges. Only the database
+container receives the bootstrap administrator secret. Initialization scripts run
+once on an empty volume; existing/imported databases need their roles, ownership
+and privileges provisioned explicitly. Never reuse the development database volume.
+
+Migrations run as an explicit one-off operation, never from each Gunicorn worker
+or automatic container startup. For updates, retain the previous image and take
+a verified database/media backup first. Stop writes before incompatible migrations,
+run checks and migrations once, then recreate **both** web and Nginx (Nginx resolves
+the web container address at startup). Verify the new instance before reopening
+traffic. Replacing an image does not reverse a schema/data migration; assess
+migration reversibility and use a coordinated restore when necessary. Do not use
+`down -v` on persistent environments.
+
+Static assets are collected with manifest storage during the image build without
+runtime secrets or a database connection. WhiteNoise serves hashed, compressed
+assets through Nginx. The named `media` volume survives container replacement;
+Django writes it and Nginx mounts it read-only. Only JPEG/PNG/WebP avatar paths are
+served, with nosniff, no directory listing, and restrictive content policy. Avatars
+are public images, not private workspace attachments. New uploads through profile
+and Admin forms must decode as a supported still image, fit a 2 MiB input/output
+budget and 16,777,216-pixel limit, and are re-encoded to a random PNG filename with
+metadata and appended content removed. Existing images are not automatically
+rewritten; inspect legacy uploads before importing an existing media directory.
+
+Nginx replaces Host and forwarding headers, rejects unknown hosts, redirects HTTP
+to the configured HTTPS authority, and uses the TCP peer for rate limits.
+Gunicorn does not interpret client forwarding headers; Django trusts the isolated
+Nginx boundary. HTTPS-only session/CSRF cookies, nosniff, frame protection and
+same-origin referrer policy are enabled. HSTS starts at one hour, without preload
+or includeSubDomains; increase it only after validating real HTTPS operation.
+Login/Admin login share 10 requests/minute with burst 5. Registration, password
+reset requests and invitation sending share 3/minute with burst 2. Invitation and
+reset-token paths share 30/minute with burst 10. Limits are per client IP, including
+users behind the same NAT; tune the explicit zones if normal traffic requires it.
+Excess requests receive a static Persian 429 page, `Retry-After: 60`, and no-store.
+Ordinary browsing is not limited. Production request/error logs use safe JSON
+fields and omit URLs, query strings, cookies, headers and exception contents;
+Docker log rotation bounds local storage. See the operations guide below.
+
+For an eventual public host, set `TASKFLOW_HOST` to its DNS name or IPv4 address,
+bind Nginx explicitly to the intended host interface, set HTTP/HTTPS ports to
+80/443, and supply a valid certificate chain/key in the configured TLS directory.
+Arrange certificate renewal and reload Nginx after replacing certificates.
+The sample console email backend is only for local verification. Production-like
+settings simulate it without printing contents/tokens; development still prints
+messages. Configure real delivery before public use.
+
+`GET`/`HEAD /health/live/` checks liveness without database access;
+`/health/ready/` checks PostgreSQL within a five-second deadline and returns generic
+503 on failure. Docker checks readiness, but an unhealthy status alone does not
+restart the container or prove that migrations are complete.
+
+Use [the production operations guide](deploy/OPERATIONS.md) for health/log commands,
+`deploy/backup.py` backup, verify and fresh-target restore procedures, disposable
+restoration checks, and release/rollback steps. A checksum check is not a restoration
+test, and image rollback does not reverse database or media changes. Backups and
+off-host copying remain explicit operator actions.
+
+The repeatable runtime check creates an account, recreates containers, and tests
+TLS verification, proxy spoofing, CSRF/cookies, manifest assets, avatar persistence,
+rate limits and restricted database-role DDL. Use a separate disposable project:
+
+```sh
+docker compose --env-file .env.production -f compose.production.yaml -p taskflow-runtime-check build web
+docker compose --env-file .env.production -f compose.production.yaml -p taskflow-runtime-check run --rm web python manage.py migrate --noinput
+docker compose --env-file .env.production -f compose.production.yaml -p taskflow-runtime-check up -d
+python3 deploy/verify_runtime.py
+docker compose --env-file .env.production -f compose.production.yaml -p taskflow-runtime-check down -v
+```
+
+Pass `--http-port` / `--https-port` to the check script when using different ports.
+Do not run these disposable checks against a live environment or while another
+stack uses the same published ports. The ordinary pytest suite continues to use
+the development database role, because creating a test database requires CREATEDB.
 
 Production email delivery uses Django's SMTP backend by default. Configure these environment variables for the target mail provider:
 
 - `DJANGO_EMAIL_HOST`
 - `DJANGO_EMAIL_PORT`
+- `DJANGO_EMAIL_TIMEOUT` (default 5 seconds; greater than zero and at most 10)
 - `DJANGO_EMAIL_HOST_USER`
 - `DJANGO_EMAIL_HOST_PASSWORD`
 - `DJANGO_EMAIL_USE_TLS`
@@ -159,12 +302,44 @@ Production email delivery uses Django's SMTP backend by default. Configure these
 - `DJANGO_DEFAULT_FROM_EMAIL`
 
 Set `DJANGO_EMAIL_BACKEND` only when a different Django email backend is required.
+TLS and implicit SSL are mutually exclusive; production SMTP requires one of them.
+SMTP host, port, sender and credential pairs are validated at startup. A timeout
+must be finite and positive; invalid boolean values fail instead of silently
+disabling encryption. `EMAIL_TIMEOUT` bounds individual socket operations, not the
+entire request or DNS lookup. Delivery remains synchronous without a worker queue.
+The provider accepting a message does not guarantee inbox delivery.
+
+Password reset retains Django's active-account/password checks, token generation,
+single-use behavior and generic redirect for existing, unknown, inactive and
+unusable-password accounts, including SMTP failures. The completion page makes no
+delivery guarantee and never exposes backend errors or account existence. As with
+Django's synchronous reset flow, SMTP latency can still produce timing differences.
 
 ## Workspaces and invitations
 
 Authenticated users can create multiple workspaces under `/workspaces/`. Workspace access is controlled by Owner, Admin, and Member roles. Owners manage roles and workspace settings, while Owners and Admins can invite and remove eligible members.
 
 Invitation links are single-use, expire after seven days by default, and can only be accepted by a signed-in account with the invited email address. Set `WORKSPACE_INVITATION_EXPIRY_DAYS` to change the lifetime. Email delivery reuses the `DJANGO_EMAIL_*` configuration described above; development writes invitations to the console.
+
+Invitation creation commits before SMTP starts, releasing workspace and membership
+locks. These views explicitly opt out of request-wide transactions. A zero send
+count, rejected message, connection failure or timeout shows an unconfirmed-delivery
+message; it never rolls back the committed invitation or claims success. SMTP may
+have accepted DATA before its reply was lost, so the link remains usable. A process
+interruption between commit and sending can likewise leave a pending invitation.
+There is no automatic retry, durable email queue or exactly-once delivery claim.
+
+Owners can resend pending Member/Admin invitations from the members page; Admins
+can resend only Member invitations. The POST-only, CSRF-protected action rechecks
+current permissions and pending status under workspace/actor/invitation locks.
+Each resend invalidates the old link by rotating its hash; raw tokens are never
+stored. Role, recipient, original inviter and expiry remain unchanged. Accepted,
+revoked, expired invitations and invitations to current members cannot be resent.
+After failure, use this action again; it generates another new link and never
+restores a previous token. Concurrent resends can produce multiple emails, but only
+the latest committed token is valid. Production Nginx applies the same email rate
+limit to creation and resend. Invitation failure logs contain only the invitation
+ID, without raw SMTP errors, email addresses or links.
 
 Invitation destinations survive navigation between login and registration,
 registration validation errors, and switching away from an incorrect account.

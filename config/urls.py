@@ -4,7 +4,11 @@ from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import TemplateView
 
+from .health import live, ready
+
 urlpatterns = [
+    path("health/live/", live, name="health_live"),
+    path("health/ready/", ready, name="health_ready"),
     path("admin/", admin.site.urls),
     path("accounts/", include("apps.accounts.urls")),
     path("notifications/", include("apps.notifications.urls")),

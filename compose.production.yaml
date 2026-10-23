@@ -1,0 +1,114 @@
+name: taskflow-production
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:17-alpine
+    command: ["postgres", "-c", "log_min_error_statement=panic", "-c", "log_error_verbosity=terse", "-c", "log_parameter_max_length_on_error=0"]
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_DB: taskflow
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_admin_password
+      POSTGRES_APP_PASSWORD_FILE: /run/secrets/db_app_password
+    secrets:
+      - db_admin_password
+      - db_app_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init-app.sh:/docker-entrypoint-initdb.d/10-app.sh:ro
+    networks: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d taskflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  web:
+    image: ${TASKFLOW_IMAGE:-taskflow-production-web:local}
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    logging: *logging
+    command: ["gunicorn", "--config", "deploy/gunicorn.conf.py", "config.wsgi:application"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_SECRET_KEY_FILE: /run/secrets/django_secret_key
+      DJANGO_ALLOWED_HOSTS: ${TASKFLOW_HOST:-localhost}
+      DJANGO_CSRF_TRUSTED_ORIGINS: https://${TASKFLOW_HOST:-localhost}:${TASKFLOW_HTTPS_PORT:-8443}
+      DJANGO_EMAIL_BACKEND: ${DJANGO_EMAIL_BACKEND:-django.core.mail.backends.smtp.EmailBackend}
+      DJANGO_EMAIL_HOST: ${DJANGO_EMAIL_HOST:-localhost}
+      DJANGO_EMAIL_PORT: ${DJANGO_EMAIL_PORT:-587}
+      DJANGO_EMAIL_TIMEOUT: ${DJANGO_EMAIL_TIMEOUT:-5}
+      DJANGO_EMAIL_HOST_USER: ${DJANGO_EMAIL_HOST_USER:-}
+      DJANGO_EMAIL_HOST_PASSWORD: ${DJANGO_EMAIL_HOST_PASSWORD:-}
+      DJANGO_EMAIL_USE_TLS: ${DJANGO_EMAIL_USE_TLS:-true}
+      DJANGO_EMAIL_USE_SSL: ${DJANGO_EMAIL_USE_SSL:-false}
+      DJANGO_DEFAULT_FROM_EMAIL: ${DJANGO_DEFAULT_FROM_EMAIL:-TaskFlow <noreply@example.com>}
+      POSTGRES_DB: taskflow
+      POSTGRES_USER: taskflow_app
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_app_password
+      POSTGRES_HOST: db
+    secrets:
+      - django_secret_key
+      - db_app_password
+    volumes:
+      - media:/app/media
+    networks: [proxy, database, outbound]
+    healthcheck:
+      test: ["CMD", "python", "deploy/healthcheck.py"]
+      interval: 30s
+      timeout: 7s
+      retries: 3
+      start_period: 15s
+
+  nginx:
+    image: nginx:1.30.6-alpine
+    restart: unless-stopped
+    logging: *logging
+    depends_on: [web]
+    environment:
+      TASKFLOW_HOST: ${TASKFLOW_HOST:-localhost}
+      TASKFLOW_HTTPS_PORT: ${TASKFLOW_HTTPS_PORT:-8443}
+      NGINX_ENVSUBST_FILTER: ^TASKFLOW_
+    ports:
+      - "${TASKFLOW_BIND_ADDRESS:-127.0.0.1}:${TASKFLOW_HTTP_PORT:-8080}:8080"
+      - "${TASKFLOW_BIND_ADDRESS:-127.0.0.1}:${TASKFLOW_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - ./deploy/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./deploy/nginx/05-validate.envsh:/docker-entrypoint.d/05-validate.envsh:ro
+      - ./deploy/nginx/429.html:/usr/share/nginx/html/429.html:ro
+      - ${TASKFLOW_TLS_DIRECTORY:-./.runtime/tls}:/etc/nginx/tls:ro
+      - media:/srv/media:ro
+    networks: [proxy, edge]
+
+networks:
+  proxy:
+    internal: true
+  database:
+    internal: true
+  outbound:
+  edge:
+
+volumes:
+  postgres_data:
+  media:
+
+secrets:
+  django_secret_key:
+    file: ${TASKFLOW_SECRET_DIRECTORY:-./.runtime/secrets}/django_secret_key
+  db_admin_password:
+    file: ${TASKFLOW_SECRET_DIRECTORY:-./.runtime/secrets}/db_admin_password
+  db_app_password:
+    file: ${TASKFLOW_SECRET_DIRECTORY:-./.runtime/secrets}/db_app_password

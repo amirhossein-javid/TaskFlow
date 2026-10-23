@@ -20,6 +20,34 @@
 - Tests use pytest, pytest-django, pytest-cov, and a real PostgreSQL database.
 - Development tooling is configured in `pyproject.toml`, `pytest.ini`, and `.pre-commit-config.yaml`.
 
+## Production boundary
+
+- Keep `compose.production.yaml` independent of development Compose. Only Nginx may publish
+  ports; preserve private proxy/database networks and the restricted `taskflow_app` role.
+- Preserve fail-fast production settings validation, HTTPS-only cookies and encrypted SMTP
+  with finite positive socket timeouts. Socket timeouts do not bound DNS or total delivery time.
+- Nginx replaces forwarding headers and validates the public Host. Django's proxy SSL header
+  is safe only behind that boundary; do not trust client headers for IP-based rate limits.
+- Collect manifest static assets at image build time without production secrets or a database.
+  Keep runtime secrets/TLS material outside Git and the build context, and media in its volume.
+- Never regenerate passwords for an existing database volume as a rotation mechanism;
+  coordinate file secrets with database role passwords explicitly.
+- Apply avatar decoding, pixel/size limits and pixel-only re-encoding in both profile and Admin
+  forms. Preserve existing/cleared uploads and never serve arbitrary media as active documents.
+- Production migrations are explicit one-off operations under the application role, not startup
+  side effects. Initialization scripts only provision empty PostgreSQL volumes.
+- For runtime/proxy changes, run README's disposable HTTPS runtime check in addition to focused
+  settings/security tests. Never use its account creation/container recreation against live data.
+- Liveness must not query the database; readiness must retain a wall-clock deadline including DNS.
+  Keep probe credentials off argv/logs and health responses free of internal details.
+- Production logging is allowlisted: do not add raw messages, exception values, SQL, headers,
+  URL/query values or email contents to output. Preserve request correlation across Nginx/Django.
+- Database/media backups require stopped writers. Restore only into empty isolated targets;
+  never overwrite live data or claim verification without an actual restoration and data checks.
+  Validate bundle checksums and archive paths/types before database mutation; checksums do not
+  establish authenticity. Restore schema and migration history before running migration checks.
+  Follow deploy/OPERATIONS.md for explicit release, migration, backup and rollback procedures.
+
 ## CBVs and service layer
 
 - Views use Django generic CBVs, `FormView`, or focused custom `View` subclasses.
@@ -63,6 +91,12 @@
   lock the workspace's projects by primary key to coordinate with project/board mutations.
 - Invitation acceptance locks the accepting User with `select_for_update(no_key=True)` before
   the workspace and invitation. Preserve compatibility with deferred User FK `KEY SHARE` checks.
+- Invitation creation/resend commits before synchronous email delivery; keep these HTTP views
+  outside request-wide transactions. SMTP must never hold workspace/membership/invitation locks.
+  Retain committed invitations after unconfirmed delivery and never automatically retry SMTP.
+- Resends lock workspace, current actor membership, then the scoped invitation; revalidate role,
+  pending status and current membership. Rotate only the token hash, preserve expiry, and never
+  restore an old hash after failure or log raw tokens/SMTP exception contents.
 - Admin user deletion locks Users by primary key and checks each one's current memberships before
   acquiring the next User lock. Reject deletion of any member, including in bulk actions; retain
   the locks through deletion so invitation acceptance cannot race the membership check.

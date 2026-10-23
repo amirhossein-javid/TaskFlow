@@ -25,7 +25,7 @@
         {% endfor %}
     </div>
     {% if membership.role == 'owner' or membership.role == 'admin' %}
-        <div class="pending-section"><h2>دعوت‌های در انتظار</h2>{% for invitation in pending_invitations %}{% if invitation.is_pending %}<div class="pending-row"><span dir="ltr">{{ invitation.email }}</span><span class="role-badge">{{ invitation.get_role_display }}</span><small>تا {{ invitation.expires_at|date:"Y/m/d H:i" }}</small></div>{% endif %}{% empty %}<p class="muted">دعوت فعالی وجود ندارد.</p>{% endfor %}</div>
+        <div class="pending-section"><h2>دعوت‌های در انتظار</h2>{% for invitation in pending_invitations %}{% if invitation.is_pending %}<div class="pending-row"><span dir="ltr">{{ invitation.email }}</span><span class="role-badge">{{ invitation.get_role_display }}</span><small>تا {{ invitation.expires_at|date:"Y/m/d H:i" }}</small>{% if membership.role == 'owner' or invitation.role == 'member' %}<form method="post" action="{% url 'workspaces:resend_invitation' workspace.slug invitation.pk %}">{% csrf_token %}<button class="button button-ghost button-small" type="submit" aria-label="ارسال مجدد دعوت برای {{ invitation.email }}">ارسال مجدد با پیوند جدید</button></form>{% endif %}</div>{% endif %}{% empty %}<p class="muted">دعوت فعالی وجود ندارد.</p>{% endfor %}</div>
     {% endif %}
 </section>
 {% endblock %}
