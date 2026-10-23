@@ -20,6 +20,21 @@
 - Tests use pytest, pytest-django, pytest-cov, and a real PostgreSQL database.
 - Development tooling is configured in `pyproject.toml`, `pytest.ini`, and `.pre-commit-config.yaml`.
 
+## Production boundary
+
+- Keep `compose.production.yaml` independent of development Compose. Only Nginx may publish
+  ports; preserve private proxy/database networks and the restricted `taskflow_app` role.
+- Nginx replaces forwarding headers and validates the public Host. Django's proxy SSL header
+  is safe only behind that boundary; do not trust client headers for IP-based rate limits.
+- Collect manifest static assets at image build time without production secrets or a database.
+  Keep runtime secrets/TLS material outside Git and the build context, and media in its volume.
+- Apply avatar decoding, pixel/size limits and pixel-only re-encoding in both profile and Admin
+  forms. Preserve existing/cleared uploads and never serve arbitrary media as active documents.
+- Production migrations are explicit one-off operations under the application role, not startup
+  side effects. Initialization scripts only provision empty PostgreSQL volumes.
+- For runtime/proxy changes, run README's disposable HTTPS runtime check in addition to focused
+  settings/security tests. Never use its account creation/container recreation against live data.
+
 ## CBVs and service layer
 
 - Views use Django generic CBVs, `FormView`, or focused custom `View` subclasses.

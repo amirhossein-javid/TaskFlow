@@ -146,7 +146,120 @@ pre-commit run --all-files
 - Development: `config.settings.development`
 - Production: `config.settings.production`
 
-Production requires at least `DJANGO_SECRET_KEY` and `DJANGO_ALLOWED_HOSTS`. Never commit `.env` files. Configure TLS, `CSRF_TRUSTED_ORIGINS`, and allowed hosts for the target environment before deployment.
+Production requires strong Django and database secrets, an explicit database name,
+host and application role, and explicit allowed hosts. Use exactly one of
+`DJANGO_SECRET_KEY` / `DJANGO_SECRET_KEY_FILE` and `POSTGRES_PASSWORD` /
+`POSTGRES_PASSWORD_FILE`. Empty, short and obviously weak secrets, wildcard hosts,
+unsafe CSRF origins, debug mode and disabled HTTPS redirects fail at startup.
+Never commit secrets or `.env` files.
+
+### Production runtime on one host
+
+`compose.production.yaml` is independent of the development Compose file. It runs
+Nginx, non-root Gunicorn/Django, and PostgreSQL. Only Nginx publishes ports; its
+default bindings are loopback HTTP 8080 and HTTPS 8443. Django and PostgreSQL have
+no host ports. The private proxy and database networks are internal; separate
+edge and outbound networks provide Nginx ingress and Django email egress.
+Do not attach untrusted containers, publish Gunicorn, or place another proxy/CDN
+in front without reviewing the trust and client-IP/rate-limit configuration.
+
+Initial local verification needs Docker Compose, Python 3.12+, and OpenSSL, but no
+server purchase, domain or public certificate. Run from the repository root:
+
+```sh
+cp .env.production.example .env.production
+python3 deploy/prepare_secrets.py
+mkdir -p .runtime/tls
+chmod 700 .runtime/tls
+openssl req -x509 -newkey rsa:2048 -nodes -days 7 \
+  -keyout .runtime/tls/privkey.pem -out .runtime/tls/fullchain.pem \
+  -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost'
+chmod 600 .runtime/tls/privkey.pem
+docker compose --env-file .env.production -f compose.production.yaml build web
+docker compose --env-file .env.production -f compose.production.yaml run --rm web python manage.py check --deploy
+docker compose --env-file .env.production -f compose.production.yaml run --rm web python manage.py migrate --noinput
+docker compose --env-file .env.production -f compose.production.yaml up -d
+```
+
+Open `https://localhost:8443`. The self-signed certificate is for local tests;
+trust it explicitly in a test client rather than disabling production HTTPS.
+For PowerShell, use `Copy-Item` and `New-Item -ItemType Directory` for the first
+file/directory commands; protect runtime directories with Windows ACLs instead
+of `chmod`. Change the port values in `.env.production` if they are occupied.
+
+The secret generator never overwrites existing credentials. Compose file secrets
+are read-only bind mounts, not an encrypted secret store; uid/gid/mode remapping
+is not supported for these files. Secret files are readable by the non-root
+container, with a host directory of mode 0700 (or equivalent private Windows ACLs).
+Keep `.runtime` private; it is excluded from Git and the Docker build context.
+Do not regenerate passwords for an existing database volume: changing a file does
+not change the database role password. Coordinate credential rotation explicitly.
+
+Fresh database initialization creates `taskflow_app`, which owns the `taskflow`
+database and public schema so it can run migrations. It has no superuser,
+createdb, createrole, replication or bypass-RLS privileges. Only the database
+container receives the bootstrap administrator secret. Initialization scripts run
+once on an empty volume; existing/imported databases need their roles, ownership
+and privileges provisioned explicitly. Never reuse the development database volume.
+
+Migrations run as an explicit one-off operation, never from each Gunicorn worker
+or automatic container startup. For updates, retain the previous image and take
+a verified database/media backup first. Stop writes before incompatible migrations,
+run checks and migrations once, then recreate **both** web and Nginx (Nginx resolves
+the web container address at startup). Verify the new instance before reopening
+traffic. Replacing an image does not reverse a schema/data migration; assess
+migration reversibility and use a coordinated restore when necessary. Do not use
+`down -v` on persistent environments.
+
+Static assets are collected with manifest storage during the image build without
+runtime secrets or a database connection. WhiteNoise serves hashed, compressed
+assets through Nginx. The named `media` volume survives container replacement;
+Django writes it and Nginx mounts it read-only. Only JPEG/PNG/WebP avatar paths are
+served, with nosniff, no directory listing, and restrictive content policy. Avatars
+are public images, not private workspace attachments. New uploads through profile
+and Admin forms must decode as a supported still image, fit a 2 MiB input/output
+budget and 16,777,216-pixel limit, and are re-encoded to a random PNG filename with
+metadata and appended content removed. Existing images are not automatically
+rewritten; inspect legacy uploads before importing an existing media directory.
+
+Nginx replaces Host and forwarding headers, rejects unknown hosts, redirects HTTP
+to the configured HTTPS authority, and uses the TCP peer for rate limits.
+Gunicorn does not interpret client forwarding headers; Django trusts the isolated
+Nginx boundary. HTTPS-only session/CSRF cookies, nosniff, frame protection and
+same-origin referrer policy are enabled. HSTS starts at one hour, without preload
+or includeSubDomains; increase it only after validating real HTTPS operation.
+Login/Admin login share 10 requests/minute with burst 5. Registration, password
+reset requests and invitation sending share 3/minute with burst 2. Invitation and
+reset-token paths share 30/minute with burst 10. Limits are per client IP, including
+users behind the same NAT; tune the explicit zones if normal traffic requires it.
+Excess requests receive a static Persian 429 page, `Retry-After: 60`, and no-store.
+Ordinary browsing is not limited. Access logs omit URLs, query strings and cookies;
+full application logging and operational hardening remain separate work.
+
+For an eventual public host, set `TASKFLOW_HOST` to its DNS name or IPv4 address,
+bind Nginx explicitly to the intended host interface, set HTTP/HTTPS ports to
+80/443, and supply a valid certificate chain/key in the configured TLS directory.
+Arrange certificate renewal and reload Nginx after replacing certificates.
+The sample console email backend is only for local verification and prints email
+contents/tokens; configure real delivery before public use. SMTP workflow changes,
+backup automation and monitoring are outside this runtime increment.
+
+The repeatable runtime check creates an account, recreates containers, and tests
+TLS verification, proxy spoofing, CSRF/cookies, manifest assets, avatar persistence,
+rate limits and restricted database-role DDL. Use a separate disposable project:
+
+```sh
+docker compose --env-file .env.production -f compose.production.yaml -p taskflow-runtime-check build web
+docker compose --env-file .env.production -f compose.production.yaml -p taskflow-runtime-check run --rm web python manage.py migrate --noinput
+docker compose --env-file .env.production -f compose.production.yaml -p taskflow-runtime-check up -d
+python3 deploy/verify_runtime.py
+docker compose --env-file .env.production -f compose.production.yaml -p taskflow-runtime-check down -v
+```
+
+Pass `--http-port` / `--https-port` to the check script when using different ports.
+Do not run these disposable checks against a live environment or while another
+stack uses the same published ports. The ordinary pytest suite continues to use
+the development database role, because creating a test database requires CREATEDB.
 
 Production email delivery uses Django's SMTP backend by default. Configure these environment variables for the target mail provider:
 

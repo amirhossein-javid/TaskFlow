@@ -33,9 +33,10 @@ RUN pip install --no-index --find-links=/wheels /wheels/* \
     && rm -rf /wheels
 
 COPY --chown=taskflow:taskflow . .
-RUN python manage.py collectstatic --noinput --clear \
+RUN DJANGO_SETTINGS_MODULE=config.settings.base python manage.py collectstatic --noinput --clear \
+    && mkdir -p /app/media \
     && chown taskflow:taskflow /app \
-    && chown -R taskflow:taskflow /app/staticfiles
+    && chown -R taskflow:taskflow /app/staticfiles /app/media
 
 USER taskflow
 

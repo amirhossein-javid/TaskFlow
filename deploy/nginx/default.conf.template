@@ -1,0 +1,92 @@
+# Empty keys are not rate limited. Use the TCP peer, never client-supplied headers.
+map "$request_method:$uri" $login_key {
+    default "";
+    ~^POST:/(accounts/login|admin/login)/$ $binary_remote_addr;
+}
+map "$request_method:$uri" $email_key {
+    default "";
+    ~^POST:/accounts/(register|password/reset)/$ $binary_remote_addr;
+    ~^POST:/workspaces/[^/]+/members/invite/$ $binary_remote_addr;
+}
+map $uri $token_key {
+    default "";
+    ~^/workspaces/invitations/ $binary_remote_addr;
+    ~^/accounts/password/reset/[^/]+/[^/]+/$ $binary_remote_addr;
+}
+limit_req_zone $login_key zone=login:1m rate=10r/m;
+limit_req_zone $email_key zone=email:1m rate=3r/m;
+limit_req_zone $token_key zone=token:1m rate=30r/m;
+
+# Deliberately omit URI, query strings, cookies and authorization from access logs.
+log_format taskflow '$remote_addr $request_method $status $request_time';
+error_log /dev/stderr warn;
+server_tokens off;
+
+server {
+    access_log /dev/stdout taskflow;
+    listen 8080 default_server;
+    server_name _;
+    return 400;
+}
+server {
+    access_log /dev/stdout taskflow;
+    listen 8080;
+    server_name ${TASKFLOW_HOST};
+    return 308 https://${TASKFLOW_HOST}:${TASKFLOW_HTTPS_PORT}$request_uri;
+}
+server {
+    access_log /dev/stdout taskflow;
+    listen 8443 ssl default_server;
+    server_name _;
+    ssl_certificate /etc/nginx/tls/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    return 400;
+}
+server {
+    access_log /dev/stdout taskflow;
+    listen 8443 ssl;
+    server_name ${TASKFLOW_HOST};
+    ssl_certificate /etc/nginx/tls/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    client_max_body_size 3m;
+
+    limit_req zone=login burst=5 nodelay;
+    limit_req zone=email burst=2 nodelay;
+    limit_req zone=token burst=10 nodelay;
+    limit_req_status 429;
+    limit_req_log_level notice;
+    error_page 429 /429.html;
+    location = /429.html {
+        internal;
+        root /usr/share/nginx/html;
+        add_header Retry-After 60 always;
+        add_header Cache-Control no-store always;
+        add_header X-Content-Type-Options nosniff always;
+    }
+
+    # Avatars are public images. Never serve arbitrary uploaded HTML/SVG as documents.
+    location ~* ^/media/avatars/[^/]+\.(png|jpe?g|webp)$ {
+        root /srv;
+        try_files $uri =404;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Content-Security-Policy "default-src 'none'; sandbox" always;
+    }
+    location /media/ { return 404; }
+
+    location / {
+        proxy_pass http://web:8000;
+        proxy_set_header Host ${TASKFLOW_HOST}:${TASKFLOW_HTTPS_PORT};
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Host "";
+        proxy_set_header Forwarded "";
+        proxy_set_header SCRIPT_NAME "";
+        proxy_set_header PATH_INFO "";
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 35s;
+        proxy_redirect off;
+    }
+}
